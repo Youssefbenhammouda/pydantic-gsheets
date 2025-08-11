@@ -1,5 +1,6 @@
 #custom
 .tokens
+.vscode
 client_secret*
 localtests
 .temp

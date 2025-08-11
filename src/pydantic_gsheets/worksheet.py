@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Generator, Generic, Iterable, List, Optional, Self, Sequence, Tuple, Type, TypeVar, get_origin, get_type_hints, Annotated
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, ValidationError
 from googleapiclient.discovery import Resource
@@ -129,6 +130,42 @@ def _max_index(specs: Dict[str, _FieldSpec]) -> int:
     return max(s.index for s in specs.values()) if specs else -1
 
 
+
+def _get_cell_hyperlink(service, spreadsheet_id: str, sheet_name: str, row: int, col_index0: int) -> str | None:
+    a1_col = _col_index_to_a1(col_index0)
+    a1 = f"{sheet_name}!{a1_col}{row}:{a1_col}{row}"
+    resp = service.spreadsheets().get(
+        spreadsheetId=spreadsheet_id,
+        ranges=[a1],
+        includeGridData=True,
+        fields="sheets(data(rowData(values(hyperlink,textFormatRuns,userEnteredValue,formattedValue,chipRuns))))",
+    ).execute()
+
+    try:
+        values = resp["sheets"][0]["data"][0]["rowData"][0]["values"][0]
+    except (KeyError, IndexError):
+        return None
+
+    # 1) Direct cell-level hyperlink
+    if "hyperlink" in values and values["hyperlink"]:
+        return values["hyperlink"]
+    if "chipRuns" in values and (link :=values["chipRuns"][0].get("chip", {}).get("richLinkProperties", {}).get("uri", {})):
+        return link
+    # 2) Hyperlink inside text runs (partial formatting)
+    for run in values.get("textFormatRuns", []) or []:
+        link = run.get("format", {}).get("link", {})
+        if link and link.get("uri"):
+            return link["uri"]
+
+    return None
+
+def _looks_like_url(s: str) -> bool:
+    try:
+        u = urlparse(s)
+        return u.scheme in ("http", "https")
+    except Exception:
+        return False
+
 # ==============
 # A1 utilities
 # ==============
@@ -202,7 +239,19 @@ class SheetRow(BaseModel):
                     raise ValueError(f"Parse error for field '{name}' at column {spec.index}: {e}") from e
             else:
                 if spec.py_type is DriveFile:
+                    if val is not None and not _looks_like_url(str(val)):
+                        if worksheet is not None:
+                            link = _get_cell_hyperlink(
+                                worksheet.service,
+                                worksheet.spreadsheet_id,
+                                worksheet.sheet_name,
+                                row_number,
+                                worksheet.start_column + spec.index,
+                            )
+                            if link:
+                                val = link
                     val = DriveFile.parse_from_cell(val)
+                
             # Required check (on read)
             if spec.required and (val is None or (isinstance(val, str) and (val.strip() == "" or val.strip() == "-"))):
                 raise RequiredValueError(f"Required field '{name}' is empty at row {row_number}.")
