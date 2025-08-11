@@ -1,0 +1,6 @@
+google-api-python-client==2.178.0
+google-auth-oauthlib==1.2.2
+pip==24.3.1
+pydantic==2.11.7
+
+setuptools-scm==9.1.0

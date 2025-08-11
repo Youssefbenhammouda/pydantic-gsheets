@@ -27,3 +27,10 @@ where = ["src"]
 version_scheme = "guess-next-dev"   # e.g. 1.2.0.dev3 while between tags
 local_scheme = "node-and-date"
 tag_regex = '^v?(?P<version>\d+\.\d+\.\d+)$'
+
+
+[project.urls]
+Homepage = "https://github.com/Youssefbenhammouda/pydantic-gsheets"
+Repository = "https://github.com/Youssefbenhammouda/pydantic-gsheets"
+Issues = "https://github.com/Youssefbenhammouda/pydantic-gsheets/issues"
+Documentation = "https://github.com/Youssefbenhammouda/pydantic-gsheets#readme"
