@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=80", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pydantic-gsheets"
+dynamic = ["version"]
+authors = [{name = "Youssef Ben hammouda", email = "youssef@benhammouda.ma"}]
+requires-python = ">=3.12"
+readme = "README.md"
+dependencies = [
+    
+]
+
+
+[project.optional-dependencies]
+dev = [
+    "pytest"
+]
+
+
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+version_scheme = "guess-next-dev"   # e.g. 1.2.0.dev3 while between tags
+local_scheme = "node-and-date"
+tag_regex = '^v?(?P<version>\d+\.\d+\.\d+)$'
