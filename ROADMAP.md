@@ -4,8 +4,10 @@ This document outlines the planned steps for developing `pydantic-gsheets` from 
 
 ## Phase 1: Core Infrastructure
 - [X] Implement authentication and connection helpers for the Google Sheets API.
-- [ ] Create utilities to map rows to Pydantic models and back.
-- [ ] Support reading data ranges and writing batch updates.
+- [X] Create utilities to map rows to Pydantic models and back.
+- [X] Support reading data ranges and writing batch updates.
+- [ ] Support for smart chips.
+- [ ] Support rate limiting for Google sheet API.
 
 ## Phase 2: Usability Enhancements
 - [ ] Provide command-line interface for common operations.
@@ -16,3 +18,4 @@ This document outlines the planned steps for developing `pydantic-gsheets` from 
 - [ ] Write comprehensive usage examples and API documentation.
 - [ ] Achieve high test coverage with unit and integration tests.
 - [ ] Publish stable releases to PyPI with automated workflows.
+

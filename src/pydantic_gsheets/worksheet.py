@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Callable, Dict, Generator, Generic, Iterable, List, Optional, Self, Sequence, Tuple, Type, TypeVar, get_origin, get_type_hints, Annotated
 from urllib.parse import urlparse
 
@@ -10,6 +11,14 @@ from googleapiclient.discovery import Resource
 
 from .drive_types import DriveFile, GSDrive
 
+
+
+
+otherTypes = (DriveFile,)
+
+formatters:dict[Type, Callable[[Any], str]] = {
+    DriveFile: lambda v:v.url,
+}
 
 class RequiredValueError(ValueError):
     pass
@@ -269,46 +278,35 @@ class SheetRow(BaseModel):
     def _to_sheet_values(self) -> List[Any]:
         """
         Convert the instance to a list aligned with GSIndex columns.
-        Respects GSReadonly by writing the current cell value (if already bound),
-        otherwise leaves it blank.
+
+
+        - Required fields are validated before returning.
+        - Boolean values are converted to "TRUE"/"FALSE" for USER_ENTERED mode.
+        - None values become empty strings.
         """
         specs = self._specs()
         width = self._width()
-        out: List[Any] = [""] * width
+        out: List[Any] = [""] * width  # pre-fill blanks
 
         for name, spec in specs.items():
-            if spec.readonly:
-                # Keep existing value if we are bound; otherwise leave blank
-                if self._worksheet and self._row_number:
-                    # fetch current value at that cell to keep it unchanged
-                    a1 = self._worksheet._row_a1_range( self._row_number)
-                    # Narrow to the single cell for this field
-                    start_col = self._worksheet.start_column + spec.index
-                    col_a1 = _col_index_to_a1(start_col)
-                    row = self._row_number
-                    single_rng = f"{self._worksheet.sheet_name}!{col_a1}{row}:{col_a1}{row}"
-                    resp = self._worksheet.service.spreadsheets().values().get(
-                        spreadsheetId=self._worksheet.spreadsheet_id, range=single_rng
-                    ).execute()
-                    existing = resp.get("values", [[""]])[0][0] if resp.get("values") else ""
-                    out[spec.index] = existing
-                else:
-                    out[spec.index] = ""
-                continue
+
 
             val = getattr(self, name)
-            # Required check (on write)
+
+            # Required check
             if spec.required and (val is None or (isinstance(val, str) and val.strip() == "")):
                 raise ValueError(f"Required field '{name}' is empty (write aborted).")
 
-            # Let Google parse with USER_ENTERED; basic normalization:
+            # Normalize booleans for Sheets
             if isinstance(val, bool):
                 out[spec.index] = "TRUE" if val else "FALSE"
             else:
-                out[spec.index] = val if val is not None else ""
+                if type(val) in otherTypes:
+                    out[spec.index] = formatters[type(val)](val)
+                else:
+                    out[spec.index] = str(val) if val is not None else ""
 
         return out
-
     def _bind(self, worksheet: GoogleWorkSheet, row_number: int) -> None:
         self._worksheet = worksheet
         self._row_number = row_number
@@ -355,13 +353,13 @@ class SheetRow(BaseModel):
         """Persist the current instance to its bound row."""
         if not self._worksheet or not self._row_number:
             raise RuntimeError("Row is not bound; cannot save. Use worksheet.append_row() or read_row().")
-        self._worksheet.write_row(self)
+        self._worksheet.write_rows([self])
 
     def reload(self) -> None:
         """Refresh the current instance from the sheet."""
         if not self._worksheet or not self._row_number:
             raise RuntimeError("Row is not bound; cannot reload.")
-        fresh = self._worksheet.read_row( self._row_number)
+        fresh = self._worksheet._read_row( self._row_number)
         for k, v in fresh.model_dump().items():  # pydantic v2; for v1 use .dict()
             setattr(self, k, v)
 
@@ -414,6 +412,64 @@ class GoogleWorkSheet(Generic[T]):
         # Pre-validate read (and optionally write) permissions
         self._validate_access(require_write=require_write)
 
+
+        self._row_instances: Dict[int, T] = {}
+        self._row_order: List[int] = []  # preserves insertion/read order
+
+
+
+    def rows(self, *, refresh: bool = False, skip_rows_missing_required : bool = True) ->Generator[T, None, None]:
+        """
+        Return all row instances for this worksheet (cached).
+        Set refresh=True to re-read the sheet.
+        """
+        if refresh or not self._row_instances:
+            self.clear_cache()
+            for inst in self._read_rows(skip_rows_missing_required=skip_rows_missing_required):
+                self._cache_put(inst)
+                yield inst 
+
+    def get(self, row_number: int, *, use_cache: bool = True, refresh: bool = False, skip_rows_missing_required: bool = True) -> Optional[T]:
+        """
+        Get a single row by absolute row number. Returns None if required fields
+        were missing and ignore_required=True would have skipped it.
+        """
+        if use_cache and not refresh and row_number in self._row_instances:
+            return self._row_instances[row_number]
+        try:
+            inst = self._read_row(row_number)
+        except RequiredValueError as e:
+            if skip_rows_missing_required:
+                return None
+            raise e
+        self._cache_put(inst)
+        return inst
+
+    def saveRow(self, inst: T | int) -> None:
+        if isinstance(inst, int):
+            if inst not in self._row_order:
+                raise ValueError(f"No row instance found for row number {inst}.")
+            inst = self._row_instances[inst]
+        inst.save()
+    
+    def saveRows(self, rows: Iterable[T]) -> None:
+        #Bulk save rows
+        pass
+
+    def _cache_put(self, inst: T) -> None:
+        rn = inst._row_number
+        if rn is None:
+            raise ValueError("Row number is not set.")
+        self._row_instances[rn] = inst
+        if rn not in self._row_order:
+            self._row_order.append(rn)
+
+    def clear_cache(self) -> None:
+        self._row_instances.clear()
+        self._row_order.clear()
+
+    
+    
     # -------------
     # Access checks
     # -------------
@@ -493,11 +549,17 @@ class GoogleWorkSheet(Generic[T]):
         a1_end = _col_index_to_a1(end_col)
         return f"{self.sheet_name}!{a1_start}{row_number}:{a1_end}{row_number}"
 
+    def _cell_a1_range(self, row: int, col_index0: int) -> str:
+        """
+        A1 range for a single logical data cell bound to model_cls.
+        """
+        a1_col = _col_index_to_a1(col_index0)
+        return f"{self.sheet_name}!{a1_col}{row}:{a1_col}{row}"
     # ----------
     # Read/write
     # ----------
 
-    def read_row(self, row_number: int) -> "T":
+    def _read_row(self, row_number: int) -> "T":
         """
         Read a single row into a bound model instance.
         """
@@ -519,7 +581,7 @@ class GoogleWorkSheet(Generic[T]):
         return instance
 
 
-    def read_rows(self, ignore_required: bool = True) -> Generator[T, None, None]:
+    def _read_rows(self, skip_rows_missing_required : bool = True) -> Generator[T, None, None]:
         """
         Stream all non-empty data rows as typed SheetRow instances.
         - Uses the model bound to this worksheet (self._model).
@@ -527,7 +589,7 @@ class GoogleWorkSheet(Generic[T]):
         - Skips fully blank rows.
         - Preserves absolute row numbers (sheet 1-based).
 
-        ignore_required: If true, skip rows with missing required fields
+        skip_rows_missing_required : If true, skip rows with missing required fields
         """
         # --- safety & setup
         if not hasattr(self, "_model") or self._model is None:
@@ -567,7 +629,7 @@ class GoogleWorkSheet(Generic[T]):
             try:
                 instance = model_cls._from_sheet_values(self, row_number, flat)
             except RequiredValueError as e:
-                if ignore_required:
+                if skip_rows_missing_required :
                     continue
                 else:
                     raise e
@@ -577,51 +639,61 @@ class GoogleWorkSheet(Generic[T]):
                 instance._predownload_drive_files(specs, self.drive_service)
 
             yield instance
-    def write_row(self, instance: "T") -> None:
+
+    def write_rows(self, instances: Iterable["T"]) -> None:
         """
-        Write back a bound instance to its row. Respects GSReadonly.
+        Bulk write multiple bound instances in a single API call.
+        Preserves GSReadonly columns by fetching their existing values first.
         """
-        if instance._worksheet is not self:
-            raise ValueError("This row is bound to a different worksheet.")
-        #if instance._row_number is None: append to sheet
-        if instance._row_number is None:
-            instance._row_number = self.get_last_row_number() + 1
-        rng = self._row_a1_range(instance._row_number)
-        values = [instance._to_sheet_values()]
-        self.service.spreadsheets().values().update(
+        instances = list(instances)
+        if not instances:
+            return
+        new_columns:list[int] = []
+        # Validate and sort by row_number
+        for inst in instances:
+            if inst._worksheet is not self:
+                raise ValueError(f"Row {inst} is bound to a different worksheet.")
+            if inst._row_number is None:
+                inst._row_number = self.get_last_row_number() + 1
+                new_columns.append(inst._row_number)
+        instances.sort(key=lambda r: r._row_number) # pyright: ignore[reportArgumentType]
+
+
+        specs = self._model._specs()
+        all_cols = [spec.index for spec in specs.values()]
+        editable_cols = [spec.index for spec in specs.values() if not spec.readonly]
+        requests = []
+        for inst in instances:
+            rn:int = inst._row_number # pyright: ignore[reportAssignmentType]
+            row_vals = inst._to_sheet_values()  
+            for col_idx, cell_val in enumerate(row_vals):
+                if  col_idx not in all_cols:
+                    continue
+                if rn not in new_columns and col_idx not in editable_cols:
+                    continue
+                a1 = self._cell_a1_range(rn, col_idx + self.start_column)
+                requests.append({
+                    "range": a1,
+                    "majorDimension": "ROWS",
+                    "values": [[cell_val]],
+                })
+        if not requests:
+            return
+        # ONE request to write everything
+        self.service.spreadsheets().values().batchUpdate(
             spreadsheetId=self.spreadsheet_id,
-            range=rng,
-            valueInputOption="USER_ENTERED",
-            body={"values": values},
+            body={
+                "valueInputOption": "USER_ENTERED",
+                "data": requests
+            },
         ).execute()
 
-    def append_row(self, instance: "SheetRow") -> int:
-        """
-        Append the instance as a new row at the end of the data range.
-        Binds the instance to the created row and returns the row number.
-        """
-        model_cls = type(instance)
-        rng = f"{self.sheet_name}!{_col_index_to_a1(self.start_column)}{self.start_row}"
-        resp = self.service.spreadsheets().values().append(
-            spreadsheetId=self.spreadsheet_id,
-            range=rng,
-            valueInputOption="USER_ENTERED",
-            insertDataOption="INSERT_ROWS",
-            body={"values": [instance._to_sheet_values()]},
-        ).execute()
-        # updatedRange like 'Sheet1!A12:R12'
-        updated_range = resp.get("updates", {}).get("updatedRange", "")
-        # Extract the row number from the A1 range suffix
-        try:
-            a1_part = updated_range.split("!")[1]
-            row_str = "".join(ch for ch in a1_part.split(":")[0] if ch.isdigit())
-            row_num = int(row_str)
-        except Exception:
-            # Fallback: fetch last row via values.get
-            row_num = self.get_last_row_number()
-        # Bind
-        instance._bind(self, row_num)
-        return row_num
+        # Optional: refresh cache
+        if hasattr(self, "_cache_put"):
+            for inst in instances:
+                self._cache_put(inst)
+
+
 
     def get_last_row_number(self,) -> int:
         """
