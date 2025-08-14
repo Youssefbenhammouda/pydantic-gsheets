@@ -10,7 +10,7 @@ from pydantic import BaseModel, ValidationError
 from googleapiclient.discovery import Resource
 
 from .drive_types import DriveFile, GSDrive
-
+from googleapiclient.errors import HttpError
 
 
 
@@ -351,9 +351,9 @@ class SheetRow(BaseModel):
 
     def save(self) -> None:
         """Persist the current instance to its bound row."""
-        if not self._worksheet or not self._row_number:
-            raise RuntimeError("Row is not bound; cannot save. Use worksheet.append_row() or read_row().")
-        self._worksheet.write_rows([self])
+        if not self._worksheet :
+            raise RuntimeError("Row is not bound to a worksheet; cannot save.")
+        self._worksheet._write_rows([self])
 
     def reload(self) -> None:
         """Refresh the current instance from the sheet."""
@@ -383,9 +383,11 @@ class GoogleWorkSheet(Generic[T]):
         start_row: int = 2,           # 1-based row number where data starts (2 if you have headers in row 1)
         has_headers: bool = True,
         start_column: int = 0,        # 0-based column offset (0 = column A)
-        require_write: bool = False,
+        
         drive_service: Optional[Any]=None,
     ):
+        if has_headers and start_row < 2:
+            raise ValueError("start_row must be at least 2 when has_headers is True")
         self.service = service
         self.spreadsheet_id = spreadsheet_id
         self.sheet_name = sheet_name
@@ -410,13 +412,115 @@ class GoogleWorkSheet(Generic[T]):
         self.sheet_id = sheet_id
 
         # Pre-validate read (and optionally write) permissions
-        self._validate_access(require_write=require_write)
+        self._validate_access()
 
 
         self._row_instances: Dict[int, T] = {}
         self._row_order: List[int] = []  # preserves insertion/read order
 
 
+
+    @staticmethod
+    def create_sheet(
+        model: Type[T],
+        service: Any,
+        spreadsheet_id: str,
+        sheet_name: str,
+        add_column_headers: bool = True,
+        skip_if_exists: bool = True,
+        start_row: int = 2,  
+        start_column: int = 0,        # 0-based column offset (0 = column A)
+        drive_service: Optional[Any]=None,
+    ) -> GoogleWorkSheet[T]:
+        """Create a new sheet in the specified spreadsheet."""
+        body = {
+            "requests": [
+                {
+                    "addSheet": {
+                        "properties": {
+                            "title": sheet_name
+                        }
+                    }
+                }
+            ]
+        }
+        try:
+            service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+            ).execute()
+        except HttpError as e:
+            if skip_if_exists and "already exists" in e.reason:
+                return GoogleWorkSheet(
+                    model=model,
+                    service=service,
+                    spreadsheet_id=spreadsheet_id,
+                    sheet_name=sheet_name,
+                    has_headers=add_column_headers,
+                    start_column=start_column,
+                    start_row=start_row,
+                    drive_service=drive_service,
+                )
+            raise e
+        # write columns names
+        if add_column_headers:
+            headers = model.__annotations__.keys()
+            header_range = f"{sheet_name}!{_col_index_to_a1(0)}{1}:{_col_index_to_a1(len(headers) - 1)}{1}"
+            sheets = service.spreadsheets().get(
+                spreadsheetId=spreadsheet_id,
+                fields="sheets(properties(sheetId,title))"
+            ).execute()["sheets"]
+            sheet_id = next(
+                (sheet["properties"]["sheetId"] for sheet in sheets if sheet["properties"]["title"] == sheet_name),
+                None
+            )
+            if sheet_id is None:
+                raise ValueError(f"Sheet with name '{sheet_name}' not found.")
+
+            # Combine header writing and styling into a single batchUpdate request
+            requests = [
+            {
+                "updateCells": {
+                "rows": [
+                    {
+                    "values": [
+                        {
+                        "userEnteredValue": {"stringValue": header},
+                        "userEnteredFormat": {
+                            "textFormat": {"bold": True},
+                            "horizontalAlignment": "CENTER",
+                            "backgroundColor": {"red": 0.9, "green": 0.9, "blue": 0.9}
+                        }
+                        }
+                        for header in headers
+                    ]
+                    }
+                ],
+                "fields": "userEnteredValue,userEnteredFormat(textFormat,horizontalAlignment,backgroundColor)",
+                "start": {
+                    "sheetId": sheet_id,
+                    "rowIndex": 0,
+                    "columnIndex": 0
+                }
+                }
+            }
+            ]
+            service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"requests": requests}
+            ).execute()
+       
+        return GoogleWorkSheet(
+            model=model,
+            service=service,
+            spreadsheet_id=spreadsheet_id,
+            sheet_name=sheet_name,
+            has_headers=add_column_headers,
+            start_column=start_column,
+            start_row=start_row,
+            drive_service=drive_service,
+
+        )
 
     def rows(self, *, refresh: bool = False, skip_rows_missing_required : bool = True) ->Generator[T, None, None]:
         """
@@ -450,11 +554,11 @@ class GoogleWorkSheet(Generic[T]):
             if inst not in self._row_order:
                 raise ValueError(f"No row instance found for row number {inst}.")
             inst = self._row_instances[inst]
-        inst.save()
+        self.saveRows([inst])
     
     def saveRows(self, rows: Iterable[T]) -> None:
         #Bulk save rows
-        pass
+        self._write_rows(rows)
 
     def _cache_put(self, inst: T) -> None:
         rn = inst._row_number
@@ -474,7 +578,7 @@ class GoogleWorkSheet(Generic[T]):
     # Access checks
     # -------------
 
-    def _validate_access(self, *, require_write: bool = False) -> None:
+    def _validate_access(self, *, require_write: bool = True) -> None:
         # Read check: try to fetch top-left data cell in our region
         top_left_range = f"{self.sheet_name}!{_col_index_to_a1(self.start_column)}{self.start_row}:{_col_index_to_a1(self.start_column)}{self.start_row}"
         self.service.spreadsheets().values().get(
@@ -640,21 +744,27 @@ class GoogleWorkSheet(Generic[T]):
 
             yield instance
 
-    def write_rows(self, instances: Iterable["T"]) -> None:
+    def _write_rows(self, instances: Iterable["T"]) -> None:
         """
         Bulk write multiple bound instances in a single API call.
         Preserves GSReadonly columns by fetching their existing values first.
         """
+        lastrow = self.get_last_row_number()
         instances = list(instances)
         if not instances:
             return
         new_columns:list[int] = []
         # Validate and sort by row_number
         for inst in instances:
-            if inst._worksheet is not self:
+            if inst._worksheet is None:
+                if type(inst) is not self._model:
+                    raise ValueError(f"Row {inst} is not of the correct model type.")
+                inst._worksheet = self
+            elif inst._worksheet is not self:
                 raise ValueError(f"Row {inst} is bound to a different worksheet.")
             if inst._row_number is None:
-                inst._row_number = self.get_last_row_number() + 1
+                lastrow += 1
+                inst._row_number = lastrow 
                 new_columns.append(inst._row_number)
         instances.sort(key=lambda r: r._row_number) # pyright: ignore[reportArgumentType]
 

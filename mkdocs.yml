@@ -1,0 +1,10 @@
+site_name: Pydantic Google Sheets Documentation
+site_description: A Python library for sending and receiving data from Google Sheets using Pydantic.
+repo_url: https://github.com/Youssefbenhammouda/pydantic-gsheets
+nav:
+  - Home: index.md
+  - Authentication: auth.md
+  - Drive file helpers: drive_types.md
+  - Worksheet interaction: worksheet.md
+theme:
+  name: material

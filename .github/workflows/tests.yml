@@ -1,0 +1,49 @@
+name: CI Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write   # required for OIDC auth
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    # skip secret-based steps for PRs from forks
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+
+    env:
+      SHEET_ID: ${{ secrets.SHEET_ID }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT_EMAIL: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Authenticate with GCP (OIDC)
+      - name: Auth to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[test]"
+
+
+
+      # Run pytest only in a specific directory, skip another
+      - name: Run tests
+        run: |
+          pytest tests/ --ignore=tests/localtests --disable-warnings -q
