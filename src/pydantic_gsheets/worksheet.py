@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from typing import Any, Callable, Dict, Generator, Generic, Iterable, List, Optional, Self, Sequence, Tuple, Type, TypeVar, get_origin, get_type_hints, Annotated
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ValidationError
 from googleapiclient.discovery import Resource
-
+from .googleSheetHelpers import *
 from .drive_types import DriveFile, GSDrive
 from googleapiclient.errors import HttpError
 
@@ -246,6 +247,8 @@ class SheetRow(BaseModel):
                     val = spec.parser(val)
                 except Exception as e:
                     raise ValueError(f"Parse error for field '{name}' at column {spec.index}: {e}") from e
+            elif spec.fmt and spec.fmt.type == "DATE_TIME":
+                val = gsheets_serial_to_datetime(val)
             else:
                 if spec.py_type is DriveFile:
                     if val is not None and not _looks_like_url(str(val)):
@@ -304,7 +307,7 @@ class SheetRow(BaseModel):
                 if type(val) in otherTypes:
                     out[spec.index] = formatters[type(val)](val)
                 else:
-                    out[spec.index] = str(val) if val is not None else ""
+                    out[spec.index] = val if val is not None else ""
 
         return out
     def _bind(self, worksheet: GoogleWorkSheet, row_number: int) -> None:
@@ -715,6 +718,7 @@ class GoogleWorkSheet(Generic[T]):
             spreadsheetId=self.spreadsheet_id,
             range=rng,
             majorDimension="ROWS",
+            valueRenderOption="UNFORMATTED_VALUE",
         ).execute()
         rows = resp.get("values", [])
 
@@ -746,15 +750,17 @@ class GoogleWorkSheet(Generic[T]):
 
     def _write_rows(self, instances: Iterable["T"]) -> None:
         """
-        Bulk write multiple bound instances in a single API call.
-        Preserves GSReadonly columns by fetching their existing values first.
+        Bulk write multiple bound instances using a single Sheets batchUpdate call.
+        - Preserves readonly columns by only updating editable/new cells.
+        - Applies GSFormat once per column across the affected row range.
         """
         lastrow = self.get_last_row_number()
         instances = list(instances)
         if not instances:
             return
-        new_columns:list[int] = []
-        # Validate and sort by row_number
+
+        # Validate and assign row numbers
+        new_rows: list[int] = []
         for inst in instances:
             if inst._worksheet is None:
                 if type(inst) is not self._model:
@@ -764,38 +770,112 @@ class GoogleWorkSheet(Generic[T]):
                 raise ValueError(f"Row {inst} is bound to a different worksheet.")
             if inst._row_number is None:
                 lastrow += 1
-                inst._row_number = lastrow 
-                new_columns.append(inst._row_number)
-        instances.sort(key=lambda r: r._row_number) # pyright: ignore[reportArgumentType]
+                inst._row_number = lastrow
+                new_rows.append(inst._row_number)
 
+        # Ensure deterministic write order
+        instances.sort(key=lambda r: r._row_number)  # pyright: ignore[reportArgumentType]
 
         specs = self._model._specs()
         all_cols = [spec.index for spec in specs.values()]
-        editable_cols = [spec.index for spec in specs.values() if not spec.readonly]
+        editable_cols = {spec.index for spec in specs.values() if not spec.readonly}
+
+        # Row span that we'll touch (for formatting)
+        min_row = min(inst._row_number for inst in instances)  # pyright: ignore[reportArgumentType]
+        max_row = lastrow
+
+        # Helper: convert a Python value to a Sheets "ExtendedValue"
+        # We keep it simple and predictable; formulas must come as strings starting with '='.
+        from datetime import datetime, date
+
+        def _to_extended_value(v):
+            if v is None:
+                # Write nothing for None: leaves existing cell as-is for existing rows,
+                # and keeps new rows blank.
+                return None
+            if isinstance(v, bool):
+                return {"boolValue": v}
+            if isinstance(v, (int, float)):
+                return {"numberValue": float(v)}
+            if isinstance(v, (datetime, date)):
+                # Google Sheets stores dates as days since 1899-12-30.
+                # For date-only values, no time fraction.
+                # NOTE: if you rely on date formatting, ensure spec.fmt is set to a date/Datetime format.
+                epoch = datetime(1899, 12, 30)
+                if isinstance(v, date) and not isinstance(v, datetime):
+                    v = datetime(v.year, v.month, v.day)
+                delta = v - epoch  # type: ignore[arg-type]
+                serial = delta.days + (delta.seconds + delta.microseconds / 1e6) / 86400.0
+                return {"numberValue": serial}
+            if isinstance(v, str) and v.startswith("="):
+                return {"formulaValue": v}
+            # Fallback: plain string
+            return {"stringValue": str(v)}
+
         requests = []
+
+        # 1) Value writes using updateCells (one HTTP call; many sub-requests is fine)
         for inst in instances:
-            rn:int = inst._row_number # pyright: ignore[reportAssignmentType]
-            row_vals = inst._to_sheet_values()  
+            rn: int = inst._row_number  # pyright: ignore[reportAssignmentType]
+            row_vals = inst._to_sheet_values()
+
             for col_idx, cell_val in enumerate(row_vals):
-                if  col_idx not in all_cols:
+                if col_idx not in all_cols:
                     continue
-                if rn not in new_columns and col_idx not in editable_cols:
+
+                # Preserve readonly columns on existing rows
+                if rn not in new_rows and col_idx not in editable_cols:
                     continue
-                a1 = self._cell_a1_range(rn, col_idx + self.start_column)
+
+                ev = _to_extended_value(cell_val)
+                if ev is None:
+                    # Skip writing entirely to avoid clearing existing content
+                    continue
+
                 requests.append({
-                    "range": a1,
-                    "majorDimension": "ROWS",
-                    "values": [[cell_val]],
+                    "updateCells": {
+                        "range": {
+                            "sheetId": self.sheet_id,
+                            "startRowIndex": rn - 1,
+                            "endRowIndex": rn,
+                            "startColumnIndex": self.start_column + col_idx,
+                            "endColumnIndex": self.start_column + col_idx + 1,
+                        },
+                        "rows": [{"values": [{"userEnteredValue": ev}]}],
+                        "fields": "userEnteredValue",
+                    }
                 })
+
+        # 2) Column-level formatting, once per column across the affected rows
+        for spec in specs.values():
+            if spec.fmt is None:
+                continue
+            fmt = spec.fmt
+            numfmt = {"type": fmt.type}
+            if fmt.pattern is not None:
+                numfmt["pattern"] = fmt.pattern
+
+            requests.append({
+                "repeatCell": {
+                    "range": {
+                        "sheetId": self.sheet_id,
+                        "startRowIndex": min_row - 1,
+                        "endRowIndex": max_row,
+                        "startColumnIndex": self.start_column + spec.index,
+                        "endColumnIndex": self.start_column + spec.index + 1,
+                    },
+                    "cell": {"userEnteredFormat": {"numberFormat": numfmt}},
+                    "fields": "userEnteredFormat.numberFormat",
+                }
+            })
+
         if not requests:
             return
-        # ONE request to write everything
-        self.service.spreadsheets().values().batchUpdate(
+
+        # Single API call for both values and formatting
+        self.service.spreadsheets().batchUpdate(
             spreadsheetId=self.spreadsheet_id,
-            body={
-                "valueInputOption": "USER_ENTERED",
-                "data": requests
-            },
+            body={"requests": requests}
         ).execute()
 
         # Optional: refresh cache

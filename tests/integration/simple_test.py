@@ -5,7 +5,7 @@ import pytest
 from google.auth import default
 from googleapiclient.discovery import build
 from faker import Faker
-from pydantic_gsheets import GoogleWorkSheet, SheetRow,GSIndex,GSRequired,GSFormat
+from pydantic_gsheets import GoogleWorkSheet, SheetRow,GSIndex,GSRequired,GSFormat,GSParse
 from random import randint
 pytestmark = pytest.mark.sheets
 

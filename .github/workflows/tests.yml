@@ -41,11 +41,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[test]"
 
-      - name: Debug GitHub OIDC claims
-        run: |
-          echo "Repository: ${{ github.repository }}"
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Ref: ${{ github.ref }}"
 
 
       # Run pytest only in a specific directory, skip another
