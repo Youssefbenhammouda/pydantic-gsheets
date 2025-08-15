@@ -21,7 +21,7 @@ test = [
     "pytest","Faker"
 ]
 docs = [
-  "mkdocs>=9.6",
+  "mkdocs-material>=9.6",
 ]
 
 
