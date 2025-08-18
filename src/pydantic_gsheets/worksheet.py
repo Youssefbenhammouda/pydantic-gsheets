@@ -4,45 +4,70 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Dict, Generator, Generic, Iterable, List, Optional, Self, Sequence, Tuple, Type, TypeVar, get_origin, get_type_hints, Annotated
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    Generic,
+    Iterable,
+    List,
+    Optional,
+    Self,
+    Sequence,
+    Tuple,
+    Type,
+    TypeVar,
+    get_origin,
+    get_type_hints,
+    Annotated,
+)
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ValidationError
 from googleapiclient.discovery import Resource
-from .googleSheetHelpers import *
-from .drive_types import DriveFile, GSDrive
+
+
 from googleapiclient.errors import HttpError
 
+from .exceptions import RequiredValueError
+from .types.smartChips_ import (
+    GS_SMARTCHIP,
+    richLinkProperties,
+    smartChip,
+    smartChips,
+    peopleSmartChip,
+    smartchipConf,
+    split_at_tokens,
+)
 
-
-otherTypes = (DriveFile,)
-
-formatters:dict[Type, Callable[[Any], str]] = {
-    DriveFile: lambda v:v.url,
-}
-
-class RequiredValueError(ValueError):
-    pass
 # =========================
 # Annotation marker classes
 # =========================
 
+
 class GSIndex:
     """Zero-based index within the logical row (relative to worksheet.start_column)."""
+
     def __init__(self, index: int):
         if index < 0:
             raise ValueError("GSIndex must be >= 0")
         self.index = index
 
+
 class GSRequired:
     """Field must be non-empty on read/write."""
+
     def __init__(self, message: str = "Required value is missing."):
         self.message = message
 
+
 class GSParse:
     """Apply a callable(value) -> parsed before constructing the model."""
+
     def __init__(self, func: Callable[[Any], Any]):
         self.func = func
+
 
 class GSFormat:
     """
@@ -50,18 +75,22 @@ class GSFormat:
     Example: GSFormat('DATE_TIME', 'dd-MM-yyyy HH:mm')
     Types: TEXT, NUMBER, PERCENT, CURRENCY, DATE, TIME, DATE_TIME, SCIENTIFIC
     """
+
     def __init__(self, number_format_type: str, pattern: Optional[str] = None):
         self.type = number_format_type
         self.pattern = pattern
 
+
 class GSReadonly:
     """Do not write this field back to the sheet."""
+
     pass
 
 
 # =========================
 # Internal field descriptor
 # =========================
+
 
 @dataclass
 class _FieldSpec:
@@ -72,7 +101,9 @@ class _FieldSpec:
     readonly: bool
     parser: Optional[Callable[[Any], Any]]
     fmt: Optional[GSFormat]
-    drive_opts: Optional[GSDrive]  # NEW
+
+    smartchip: smartchipConf
+
 
 def _extract_field_specs(model_cls: Type["SheetRow"]) -> Dict[str, _FieldSpec]:
     """
@@ -82,7 +113,7 @@ def _extract_field_specs(model_cls: Type["SheetRow"]) -> Dict[str, _FieldSpec]:
     hints = get_type_hints(model_cls, include_extras=True)
 
     for fname, annotated in hints.items():
-        if fname.startswith('_'):
+        if fname.startswith("_"):
             continue
         # annotated is either plain type or Annotated[base, *extras]
         base_type = annotated
@@ -96,7 +127,7 @@ def _extract_field_specs(model_cls: Type["SheetRow"]) -> Dict[str, _FieldSpec]:
         readonly = False
         parser = None
         fmt = None
-        drive_opts: Optional[GSDrive] = None
+        smartchip = smartchipConf(is_smartchips=issubclass(base_type, smartChips))
         for extra in extras:
             if isinstance(extra, GSIndex):
                 index = extra.index
@@ -108,9 +139,10 @@ def _extract_field_specs(model_cls: Type["SheetRow"]) -> Dict[str, _FieldSpec]:
                 parser = extra.func
             elif isinstance(extra, GSFormat):
                 fmt = extra
-            elif isinstance(extra, GSDrive):
-                drive_opts = extra
-                
+
+            elif isinstance(extra, GS_SMARTCHIP):
+                smartchip.format_text = extra.format_text
+                smartchip.smartchips = extra.smartchips
 
         if index is None:
             raise ValueError(f"Field '{fname}' is missing GSIndex() annotation.")
@@ -123,7 +155,7 @@ def _extract_field_specs(model_cls: Type["SheetRow"]) -> Dict[str, _FieldSpec]:
             readonly=readonly,
             parser=parser,
             fmt=fmt,
-            drive_opts=drive_opts,
+            smartchip=smartchip,
         )
 
     # Ensure unique indices
@@ -140,45 +172,10 @@ def _max_index(specs: Dict[str, _FieldSpec]) -> int:
     return max(s.index for s in specs.values()) if specs else -1
 
 
-
-def _get_cell_hyperlink(service, spreadsheet_id: str, sheet_name: str, row: int, col_index0: int) -> str | None:
-    a1_col = _col_index_to_a1(col_index0)
-    a1 = f"{sheet_name}!{a1_col}{row}:{a1_col}{row}"
-    resp = service.spreadsheets().get(
-        spreadsheetId=spreadsheet_id,
-        ranges=[a1],
-        includeGridData=True,
-        fields="sheets(data(rowData(values(hyperlink,textFormatRuns,userEnteredValue,formattedValue,chipRuns))))",
-    ).execute()
-
-    try:
-        values = resp["sheets"][0]["data"][0]["rowData"][0]["values"][0]
-    except (KeyError, IndexError):
-        return None
-
-    # 1) Direct cell-level hyperlink
-    if "hyperlink" in values and values["hyperlink"]:
-        return values["hyperlink"]
-    if "chipRuns" in values and (link :=values["chipRuns"][0].get("chip", {}).get("richLinkProperties", {}).get("uri", {})):
-        return link
-    # 2) Hyperlink inside text runs (partial formatting)
-    for run in values.get("textFormatRuns", []) or []:
-        link = run.get("format", {}).get("link", {})
-        if link and link.get("uri"):
-            return link["uri"]
-
-    return None
-
-def _looks_like_url(s: str) -> bool:
-    try:
-        u = urlparse(s)
-        return u.scheme in ("http", "https")
-    except Exception:
-        return False
-
 # ==============
 # A1 utilities
 # ==============
+
 
 def _col_index_to_a1(idx: int) -> str:
     """0 -> 'A', 25 -> 'Z', 26 -> 'AA' ..."""
@@ -192,14 +189,10 @@ def _col_index_to_a1(idx: int) -> str:
     return s
 
 
-# =================
-# GoogleWorkSheet
-# =================
-
-
 # =========
 # SheetRow
 # =========
+
 
 class SheetRow(BaseModel):
     """
@@ -228,52 +221,97 @@ class SheetRow(BaseModel):
 
     @classmethod
     def _from_sheet_values(
-        cls, worksheet: GoogleWorkSheet, row_number: int, values: Sequence[Any]
+        cls, worksheet: GoogleWorkSheet, row_number: int, rowData: Sequence[Any]
     ) -> "Self":
         specs = cls._specs()
         data: Dict[str, Any] = {}
 
         for name, spec in specs.items():
-            raw = values[spec.index] if spec.index < len(values) else ""
-            val = raw
 
-            # Normalize Google empty -> None
-            if val == "":
-                val = None
+            raw: dict[Any, Any] = (
+                rowData[spec.index]
+                if spec.index < len(rowData)
+                else {"userEnteredValue": {"stringValue": ""}}
+            )
+            val = raw.get("formattedValue", None) or raw.get(
+                "userEnteredValue", {}
+            ).get("stringValue", None)
 
             # Apply parser if provided
             if spec.parser and val is not None:
                 try:
                     val = spec.parser(val)
                 except Exception as e:
-                    raise ValueError(f"Parse error for field '{name}' at column {spec.index}: {e}") from e
-            elif spec.fmt and spec.fmt.type == "DATE_TIME":
-                val = gsheets_serial_to_datetime(val)
-            else:
-                if spec.py_type is DriveFile:
-                    if val is not None and not _looks_like_url(str(val)):
-                        if worksheet is not None:
-                            link = _get_cell_hyperlink(
-                                worksheet.service,
-                                worksheet.spreadsheet_id,
-                                worksheet.sheet_name,
-                                row_number,
-                                worksheet.start_column + spec.index,
-                            )
-                            if link:
-                                val = link
-                    val = DriveFile.parse_from_cell(val)
-                
-            # Required check (on read)
-            if spec.required and (val is None or (isinstance(val, str) and (val.strip() == "" or val.strip() == "-"))):
-                raise RequiredValueError(f"Required field '{name}' is empty at row {row_number}.")
+                    raise ValueError(
+                        f"Parse error for field '{name}' at column {spec.index}: {e}"
+                    ) from e
 
-            data[name] = val
+            # Required check (on read)
+            if spec.required and (
+                val is None
+                or (isinstance(val, str) and (val.strip() == "" or val.strip() == "-"))
+            ):
+                raise RequiredValueError(
+                    f"Required field '{name}' is empty at row {row_number}."
+                )
+            if spec.smartchip.is_smartchips:
+                copySmartChips = spec.smartchip.smartchips.copy()
+                data[name] = smartChips(
+                    format_text=spec.smartchip.format_text, chipRuns=[],display_text=val
+                )
+
+                for part in split_at_tokens(spec.smartchip.format_text):
+                    if part == "@":
+
+                        try:
+                            smartchiptype = copySmartChips.pop(0)
+                        except IndexError:
+                            print(
+                                f"Warning: No smartchip type defined for {spec.smartchip.format_text} at row {row_number}:{val}"
+                            )
+                            break
+
+                        for queriedChips in raw.get("chipRuns", []):
+                            chipobj = queriedChips.get("chip", {})
+                            if smartchiptype.__fieldName__ in chipobj:
+                                raw["chipRuns"].remove(queriedChips)
+                                if issubclass(smartchiptype, richLinkProperties):
+                                    data[name].chipRuns.append(
+                                        smartchiptype(
+                                            uri=chipobj.get(
+                                                "richLinkProperties", {}
+                                            ).get("uri", ""),
+                                        )
+                                    )
+                                elif issubclass(smartchiptype, peopleSmartChip):
+                                    data[name].chipRuns.append(
+                                        smartchiptype(
+                                            email=chipobj.get(
+                                                "personProperties", {}
+                                            ).get("email", ""),
+                                            display_format=smartchiptype.displayFormat(
+                                                chipobj.get("personProperties", {}).get(
+                                                    "displayFormat", ""
+                                                )
+                                            ),
+                                        )
+                                    )
+                                break
+                        else:
+                            print(
+                                f"Warning: No smartchip was found in sheet for {spec.smartchip.format_text} at row {row_number}:{val}"
+                            )
+
+
+            else:
+                data[name] = val
 
         try:
             inst = cls(**data)  # Pydantic validation of types
         except ValidationError as e:
-            raise ValueError(f"Pydantic validation failed for row {row_number}: {e}") from e
+            raise ValueError(
+                f"Pydantic validation failed for row {row_number}: {e}"
+            ) from e
 
         inst._bind(worksheet, row_number)
         return inst
@@ -293,48 +331,26 @@ class SheetRow(BaseModel):
 
         for name, spec in specs.items():
 
-
             val = getattr(self, name)
 
             # Required check
-            if spec.required and (val is None or (isinstance(val, str) and val.strip() == "")):
+            if spec.required and (
+                val is None or (isinstance(val, str) and val.strip() == "")
+            ):
                 raise ValueError(f"Required field '{name}' is empty (write aborted).")
 
             # Normalize booleans for Sheets
             if isinstance(val, bool):
                 out[spec.index] = "TRUE" if val else "FALSE"
             else:
-                if type(val) in otherTypes:
-                    out[spec.index] = formatters[type(val)](val)
-                else:
-                    out[spec.index] = val if val is not None else ""
+
+                out[spec.index] = val if val is not None else ""
 
         return out
+
     def _bind(self, worksheet: GoogleWorkSheet, row_number: int) -> None:
         self._worksheet = worksheet
         self._row_number = row_number
-
-
-    def _predownload_drive_files(self, specs: Dict[str, _FieldSpec], drive_service: Resource) -> None:
-            """
-            If a field is DriveFile and annotated with GSDrive(predownload=True),
-            download it using the provided Drive service.
-            """
-            for fname, spec in specs.items():
-                if spec.drive_opts and spec.drive_opts.predownload:
-                    val = getattr(self, fname, None)
-                    if isinstance(val, DriveFile):
-                        val.ensure_downloaded(
-                            drive_service,
-                            dest_dir=spec.drive_opts.dest_dir,
-                            filename_template=spec.drive_opts.filename_template,
-                            export_mime=spec.drive_opts.export_mime,
-                            overwrite=spec.drive_opts.overwrite,
-                            row_number=self._row_number,
-                            field_name=fname,
-                        )
-
-
 
     # -------------
     # Public API
@@ -354,7 +370,7 @@ class SheetRow(BaseModel):
 
     def save(self) -> None:
         """Persist the current instance to its bound row."""
-        if not self._worksheet :
+        if not self._worksheet:
             raise RuntimeError("Row is not bound to a worksheet; cannot save.")
         self._worksheet._write_rows([self])
 
@@ -362,11 +378,14 @@ class SheetRow(BaseModel):
         """Refresh the current instance from the sheet."""
         if not self._worksheet or not self._row_number:
             raise RuntimeError("Row is not bound; cannot reload.")
-        fresh = self._worksheet._read_row( self._row_number)
+        fresh = self._worksheet._read_row(self._row_number)
         for k, v in fresh.model_dump().items():  # pydantic v2; for v1 use .dict()
             setattr(self, k, v)
 
+
 T = TypeVar("T", bound=SheetRow)
+
+
 class GoogleWorkSheet(Generic[T]):
     """
     Thin wrapper around a single worksheet (tab) within a Google Spreadsheet.
@@ -383,26 +402,28 @@ class GoogleWorkSheet(Generic[T]):
         spreadsheet_id: str,
         sheet_name: str,
         *,
-        start_row: int = 2,           # 1-based row number where data starts (2 if you have headers in row 1)
-        has_headers: bool = True,
-        start_column: int = 0,        # 0-based column offset (0 = column A)
-        
-        drive_service: Optional[Any]=None,
+        start_row: int = 2,  # 1-based row number where data starts (2 if you have headers in row 1)
+        start_column: int = 0,  # 0-based column offset (0 = column A)
+        drive_service: Optional[Any] = None,
     ):
-        if has_headers and start_row < 2:
-            raise ValueError("start_row must be at least 2 when has_headers is True")
+
         self.service = service
         self.spreadsheet_id = spreadsheet_id
         self.sheet_name = sheet_name
         self.start_row = start_row
-        self.has_headers = has_headers
+
         self.start_column = start_column
         self.drive_service = drive_service
         self._model = model
         # Resolve sheetId and confirm it exists
-        meta = self.service.spreadsheets().get(
-            spreadsheetId=self.spreadsheet_id, fields="sheets(properties(sheetId,title))"
-        ).execute()
+        meta = (
+            self.service.spreadsheets()
+            .get(
+                spreadsheetId=self.spreadsheet_id,
+                fields="sheets(properties(sheetId,title))",
+            )
+            .execute()
+        )
         sheets = meta.get("sheets", [])
         sheet_id = None
         for sh in sheets:
@@ -411,17 +432,16 @@ class GoogleWorkSheet(Generic[T]):
                 sheet_id = props.get("sheetId")
                 break
         if sheet_id is None:
-            raise ValueError(f"Worksheet '{sheet_name}' not found in spreadsheet {spreadsheet_id}")
+            raise ValueError(
+                f"Worksheet '{sheet_name}' not found in spreadsheet {spreadsheet_id}"
+            )
         self.sheet_id = sheet_id
 
         # Pre-validate read (and optionally write) permissions
         self._validate_access()
 
-
         self._row_instances: Dict[int, T] = {}
         self._row_order: List[int] = []  # preserves insertion/read order
-
-
 
     @staticmethod
     def create_sheet(
@@ -431,26 +451,15 @@ class GoogleWorkSheet(Generic[T]):
         sheet_name: str,
         add_column_headers: bool = True,
         skip_if_exists: bool = True,
-        start_row: int = 2,  
-        start_column: int = 0,        # 0-based column offset (0 = column A)
-        drive_service: Optional[Any]=None,
+        start_row: int = 2,
+        start_column: int = 0,  # 0-based column offset (0 = column A)
+        drive_service: Optional[Any] = None,
     ) -> GoogleWorkSheet[T]:
         """Create a new sheet in the specified spreadsheet."""
-        body = {
-            "requests": [
-                {
-                    "addSheet": {
-                        "properties": {
-                            "title": sheet_name
-                        }
-                    }
-                }
-            ]
-        }
+        body = {"requests": [{"addSheet": {"properties": {"title": sheet_name}}}]}
         try:
             service.spreadsheets().batchUpdate(
-            spreadsheetId=spreadsheet_id,
-            body=body
+                spreadsheetId=spreadsheet_id, body=body
             ).execute()
         except HttpError as e:
             if skip_if_exists and "already exists" in e.reason:
@@ -459,7 +468,6 @@ class GoogleWorkSheet(Generic[T]):
                     service=service,
                     spreadsheet_id=spreadsheet_id,
                     sheet_name=sheet_name,
-                    has_headers=add_column_headers,
                     start_column=start_column,
                     start_row=start_row,
                     drive_service=drive_service,
@@ -469,74 +477,90 @@ class GoogleWorkSheet(Generic[T]):
         if add_column_headers:
             headers = model.__annotations__.keys()
             header_range = f"{sheet_name}!{_col_index_to_a1(0)}{1}:{_col_index_to_a1(len(headers) - 1)}{1}"
-            sheets = service.spreadsheets().get(
-                spreadsheetId=spreadsheet_id,
-                fields="sheets(properties(sheetId,title))"
-            ).execute()["sheets"]
+            sheets = (
+                service.spreadsheets()
+                .get(
+                    spreadsheetId=spreadsheet_id,
+                    fields="sheets(properties(sheetId,title))",
+                )
+                .execute()["sheets"]
+            )
             sheet_id = next(
-                (sheet["properties"]["sheetId"] for sheet in sheets if sheet["properties"]["title"] == sheet_name),
-                None
+                (
+                    sheet["properties"]["sheetId"]
+                    for sheet in sheets
+                    if sheet["properties"]["title"] == sheet_name
+                ),
+                None,
             )
             if sheet_id is None:
                 raise ValueError(f"Sheet with name '{sheet_name}' not found.")
 
             # Combine header writing and styling into a single batchUpdate request
             requests = [
-            {
-                "updateCells": {
-                "rows": [
-                    {
-                    "values": [
-                        {
-                        "userEnteredValue": {"stringValue": header},
-                        "userEnteredFormat": {
-                            "textFormat": {"bold": True},
-                            "horizontalAlignment": "CENTER",
-                            "backgroundColor": {"red": 0.9, "green": 0.9, "blue": 0.9}
-                        }
-                        }
-                        for header in headers
-                    ]
+                {
+                    "updateCells": {
+                        "rows": [
+                            {
+                                "values": [
+                                    {
+                                        "userEnteredValue": {"stringValue": header},
+                                        "userEnteredFormat": {
+                                            "textFormat": {"bold": True},
+                                            "horizontalAlignment": "CENTER",
+                                            "backgroundColor": {
+                                                "red": 0.9,
+                                                "green": 0.9,
+                                                "blue": 0.9,
+                                            },
+                                        },
+                                    }
+                                    for header in headers
+                                ]
+                            }
+                        ],
+                        "fields": "userEnteredValue,userEnteredFormat(textFormat,horizontalAlignment,backgroundColor)",
+                        "start": {"sheetId": sheet_id, "rowIndex": 0, "columnIndex": 0},
                     }
-                ],
-                "fields": "userEnteredValue,userEnteredFormat(textFormat,horizontalAlignment,backgroundColor)",
-                "start": {
-                    "sheetId": sheet_id,
-                    "rowIndex": 0,
-                    "columnIndex": 0
                 }
-                }
-            }
             ]
             service.spreadsheets().batchUpdate(
-            spreadsheetId=spreadsheet_id,
-            body={"requests": requests}
+                spreadsheetId=spreadsheet_id, body={"requests": requests}
             ).execute()
-       
+
         return GoogleWorkSheet(
             model=model,
             service=service,
             spreadsheet_id=spreadsheet_id,
             sheet_name=sheet_name,
-            has_headers=add_column_headers,
             start_column=start_column,
             start_row=start_row,
             drive_service=drive_service,
-
         )
 
-    def rows(self, *, refresh: bool = False, skip_rows_missing_required : bool = True) ->Generator[T, None, None]:
+    def rows(
+        self, *, refresh: bool = False, skip_rows_missing_required: bool = True
+    ) -> Generator[T, None, None]:
         """
         Return all row instances for this worksheet (cached).
         Set refresh=True to re-read the sheet.
         """
         if refresh or not self._row_instances:
             self.clear_cache()
-            for inst in self._read_rows(skip_rows_missing_required=skip_rows_missing_required):
+            for inst in self._read_rows(
+                skip_rows_missing_required=skip_rows_missing_required
+            ):
                 self._cache_put(inst)
-                yield inst 
+                yield inst
 
-    def get(self, row_number: int, *, use_cache: bool = True, refresh: bool = False, skip_rows_missing_required: bool = True) -> Optional[T]:
+    def get(
+        self,
+        row_number: int,
+        *,
+        use_cache: bool = True,
+        refresh: bool = False,
+        skip_rows_missing_required: bool = True,
+    ) -> Optional[T]:
         """
         Get a single row by absolute row number. Returns None if required fields
         were missing and ignore_required=True would have skipped it.
@@ -558,9 +582,9 @@ class GoogleWorkSheet(Generic[T]):
                 raise ValueError(f"No row instance found for row number {inst}.")
             inst = self._row_instances[inst]
         self.saveRows([inst])
-    
+
     def saveRows(self, rows: Iterable[T]) -> None:
-        #Bulk save rows
+        # Bulk save rows
         self._write_rows(rows)
 
     def _cache_put(self, inst: T) -> None:
@@ -575,8 +599,6 @@ class GoogleWorkSheet(Generic[T]):
         self._row_instances.clear()
         self._row_order.clear()
 
-    
-    
     # -------------
     # Access checks
     # -------------
@@ -588,17 +610,52 @@ class GoogleWorkSheet(Generic[T]):
             spreadsheetId=self.spreadsheet_id, range=top_left_range
         ).execute()
 
-        if require_write:
-            # Write check: write back the same value to the same cell (no-op but requires write perms)
-            get_resp = self.service.spreadsheets().values().get(
-                spreadsheetId=self.spreadsheet_id, range=top_left_range
-            ).execute()
-            current = get_resp.get("values", [[""]])[0]
+        if not require_write:
+            return
+
+        # --- Write check that avoids touching user data ---
+        # Strategy:
+        # 1) Find the first empty row in our target column starting at start_row.
+        # 2) Write a temporary marker to that empty cell (proves write perms).
+        # 3) Clear that cell immediately in a finally block.
+        col_a1 = _col_index_to_a1(self.start_column)
+        scan_range = f"{self.sheet_name}!{col_a1}{self.start_row}:{col_a1}"
+
+        # Get existing values in the column from start_row downwards.
+        # Google Sheets returns only up to the last non-empty cell, so
+        # the first empty row index is start_row + len(values).
+        get_resp = (
+            self.service.spreadsheets()
+            .values()
+            .get(
+                spreadsheetId=self.spreadsheet_id,
+                range=scan_range,
+                majorDimension="ROWS",
+            )
+            .execute()
+        )
+        col_values = get_resp.get("values", [])
+        first_empty_row = self.start_row + len(col_values)
+
+        # Construct the scratch cell range (guaranteed empty based on the above).
+        scratch_range = (
+            f"{self.sheet_name}!{col_a1}{first_empty_row}:{col_a1}{first_empty_row}"
+        )
+
+        # Write a harmless marker, then clear it.
+        try:
             self.service.spreadsheets().values().update(
                 spreadsheetId=self.spreadsheet_id,
-                range=top_left_range,
+                range=scratch_range,
                 valueInputOption="RAW",
-                body={"values": [current]},
+                body={"values": [["__WRITE_CHECK__"]]},
+            ).execute()
+        finally:
+            # Always attempt to clean up—even if the update failed, this is harmless.
+            self.service.spreadsheets().values().clear(
+                spreadsheetId=self.spreadsheet_id,
+                range=scratch_range,
+                body={},  # required but empty
             ).execute()
 
     # ---------------------
@@ -614,29 +671,34 @@ class GoogleWorkSheet(Generic[T]):
         for s in specs.values():
             if not s.fmt:
                 continue
-            requests.append({
-                "repeatCell": {
-                    "range": {
-                        "sheetId": self.sheet_id,
-                        "startColumnIndex": self.start_column + s.index,
-                        "endColumnIndex": self.start_column + s.index + 1,
-                        # Apply to all rows (omit row indices)
-                    },
-                    "cell": {
-                        "userEnteredFormat": {
-                            "numberFormat": {
-                                "type": s.fmt.type,
-                                **({"pattern": s.fmt.pattern} if s.fmt.pattern else {})
+            requests.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": self.sheet_id,
+                            "startColumnIndex": self.start_column + s.index,
+                            "endColumnIndex": self.start_column + s.index + 1,
+                            # Apply to all rows (omit row indices)
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "numberFormat": {
+                                    "type": s.fmt.type,
+                                    **(
+                                        {"pattern": s.fmt.pattern}
+                                        if s.fmt.pattern
+                                        else {}
+                                    ),
+                                }
                             }
-                        }
-                    },
-                    "fields": "userEnteredFormat.numberFormat"
+                        },
+                        "fields": "userEnteredFormat.numberFormat",
+                    }
                 }
-            })
+            )
         if requests:
             self.service.spreadsheets().batchUpdate(
-                spreadsheetId=self.spreadsheet_id,
-                body={"requests": requests}
+                spreadsheetId=self.spreadsheet_id, body={"requests": requests}
             ).execute()
 
     # -------------
@@ -662,6 +724,7 @@ class GoogleWorkSheet(Generic[T]):
         """
         a1_col = _col_index_to_a1(col_index0)
         return f"{self.sheet_name}!{a1_col}{row}:{a1_col}{row}"
+
     # ----------
     # Read/write
     # ----------
@@ -672,10 +735,13 @@ class GoogleWorkSheet(Generic[T]):
         """
         if row_number < 1:
             raise ValueError("row_number must be >= 1")
-        rng = self._row_a1_range( row_number)
-        resp = self.service.spreadsheets().values().get(
-            spreadsheetId=self.spreadsheet_id, range=rng
-        ).execute()
+        rng = self._row_a1_range(row_number)
+        resp = (
+            self.service.spreadsheets()
+            .values()
+            .get(spreadsheetId=self.spreadsheet_id, range=rng)
+            .execute()
+        )
         row_vals = resp.get("values", [[]])
         # Google may return fewer cells; pad to full width
         specs = _extract_field_specs(self._model)
@@ -683,12 +749,12 @@ class GoogleWorkSheet(Generic[T]):
         flat = row_vals[0] if row_vals else []
         flat = list(flat) + [""] * (width - len(flat))
         instance = self._model._from_sheet_values(self, row_number, flat)
-        if self.drive_service:
-            instance._predownload_drive_files(specs, self.drive_service)
+
         return instance
 
-
-    def _read_rows(self, skip_rows_missing_required : bool = True) -> Generator[T, None, None]:
+    def _read_rows(
+        self, skip_rows_missing_required: bool = True
+    ) -> Generator[T, None, None]:
         """
         Stream all non-empty data rows as typed SheetRow instances.
         - Uses the model bound to this worksheet (self._model).
@@ -700,7 +766,9 @@ class GoogleWorkSheet(Generic[T]):
         """
         # --- safety & setup
         if not hasattr(self, "_model") or self._model is None:
-            raise RuntimeError("No model bound to this worksheet. Set self._model to a SheetRow subclass.")
+            raise RuntimeError(
+                "No model bound to this worksheet. Set self._model to a SheetRow subclass."
+            )
 
         model_cls: Type[T] = self._model  # type: ignore[assignment]
         specs = _extract_field_specs(model_cls)
@@ -714,37 +782,26 @@ class GoogleWorkSheet(Generic[T]):
         rng = f"{self.sheet_name}!{a1_start}{self.start_row}:{a1_end}"
 
         # Fetch rows
-        resp = self.service.spreadsheets().values().get(
-            spreadsheetId=self.spreadsheet_id,
-            range=rng,
-            majorDimension="ROWS",
-            valueRenderOption="UNFORMATTED_VALUE",
-        ).execute()
-        rows = resp.get("values", [])
+        resp = (
+            self.service.spreadsheets()
+            .get(spreadsheetId=self.spreadsheet_id, ranges=[rng], includeGridData=True)
+            .execute()
+        )
+        rows = resp.get("sheets", [{}])[0].get("data", [{}])[0].get("rowData", [{}])
 
         # Yield typed instances
         for offset, row in enumerate(rows):
             row_number = self.start_row + offset  # absolute row number in the sheet
 
-            # Normalize Google’s row to fixed width
-            flat = list(row) if row else []
-            if len(flat) < width:
-                flat += [""] * (width - len(flat))
-
-            # Skip fully blank logical rows (across our model's columns)
-            if all((c == "" for c in flat)):
-                continue
             try:
-                instance = model_cls._from_sheet_values(self, row_number, flat)
+                instance = model_cls._from_sheet_values(
+                    self, row_number, row.get("values", [])
+                )
             except RequiredValueError as e:
-                if skip_rows_missing_required :
+                if skip_rows_missing_required:
                     continue
                 else:
                     raise e
-
-            # Drive predownload hook (if configured)
-            if self.drive_service:
-                instance._predownload_drive_files(specs, self.drive_service)
 
             yield instance
 
@@ -774,14 +831,18 @@ class GoogleWorkSheet(Generic[T]):
                 new_rows.append(inst._row_number)
 
         # Ensure deterministic write order
-        instances.sort(key=lambda r: r._row_number)  # pyright: ignore[reportArgumentType]
-
+        instances.sort(
+            key=lambda r: r._row_number  # pyright: ignore[reportArgumentType]
+        )
         specs = self._model._specs()
         all_cols = [spec.index for spec in specs.values()]
         editable_cols = {spec.index for spec in specs.values() if not spec.readonly}
 
         # Row span that we'll touch (for formatting)
-        min_row = min(inst._row_number for inst in instances)  # pyright: ignore[reportArgumentType]
+        min_row = min(
+            inst._row_number
+            for inst in instances  # pyright: ignore[reportArgumentType]
+        )
         max_row = lastrow
 
         # Helper: convert a Python value to a Sheets "ExtendedValue"
@@ -805,7 +866,9 @@ class GoogleWorkSheet(Generic[T]):
                 if isinstance(v, date) and not isinstance(v, datetime):
                     v = datetime(v.year, v.month, v.day)
                 delta = v - epoch  # type: ignore[arg-type]
-                serial = delta.days + (delta.seconds + delta.microseconds / 1e6) / 86400.0
+                serial = (
+                    delta.days + (delta.seconds + delta.microseconds / 1e6) / 86400.0
+                )
                 return {"numberValue": serial}
             if isinstance(v, str) and v.startswith("="):
                 return {"formulaValue": v}
@@ -832,19 +895,21 @@ class GoogleWorkSheet(Generic[T]):
                     # Skip writing entirely to avoid clearing existing content
                     continue
 
-                requests.append({
-                    "updateCells": {
-                        "range": {
-                            "sheetId": self.sheet_id,
-                            "startRowIndex": rn - 1,
-                            "endRowIndex": rn,
-                            "startColumnIndex": self.start_column + col_idx,
-                            "endColumnIndex": self.start_column + col_idx + 1,
-                        },
-                        "rows": [{"values": [{"userEnteredValue": ev}]}],
-                        "fields": "userEnteredValue",
+                requests.append(
+                    {
+                        "updateCells": {
+                            "range": {
+                                "sheetId": self.sheet_id,
+                                "startRowIndex": rn - 1,
+                                "endRowIndex": rn,
+                                "startColumnIndex": self.start_column + col_idx,
+                                "endColumnIndex": self.start_column + col_idx + 1,
+                            },
+                            "rows": [{"values": [{"userEnteredValue": ev}]}],
+                            "fields": "userEnteredValue",
+                        }
                     }
-                })
+                )
 
         # 2) Column-level formatting, once per column across the affected rows
         for spec in specs.values():
@@ -855,27 +920,28 @@ class GoogleWorkSheet(Generic[T]):
             if fmt.pattern is not None:
                 numfmt["pattern"] = fmt.pattern
 
-            requests.append({
-                "repeatCell": {
-                    "range": {
-                        "sheetId": self.sheet_id,
-                        "startRowIndex": min_row - 1,
-                        "endRowIndex": max_row,
-                        "startColumnIndex": self.start_column + spec.index,
-                        "endColumnIndex": self.start_column + spec.index + 1,
-                    },
-                    "cell": {"userEnteredFormat": {"numberFormat": numfmt}},
-                    "fields": "userEnteredFormat.numberFormat",
+            requests.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": self.sheet_id,
+                            "startRowIndex": min_row - 1,
+                            "endRowIndex": max_row,
+                            "startColumnIndex": self.start_column + spec.index,
+                            "endColumnIndex": self.start_column + spec.index + 1,
+                        },
+                        "cell": {"userEnteredFormat": {"numberFormat": numfmt}},
+                        "fields": "userEnteredFormat.numberFormat",
+                    }
                 }
-            })
+            )
 
         if not requests:
             return
 
         # Single API call for both values and formatting
         self.service.spreadsheets().batchUpdate(
-            spreadsheetId=self.spreadsheet_id,
-            body={"requests": requests}
+            spreadsheetId=self.spreadsheet_id, body={"requests": requests}
         ).execute()
 
         # Optional: refresh cache
@@ -883,18 +949,21 @@ class GoogleWorkSheet(Generic[T]):
             for inst in instances:
                 self._cache_put(inst)
 
-
-
-    def get_last_row_number(self,) -> int:
+    def get_last_row_number(
+        self,
+    ) -> int:
         """
         Best-effort last row detection for the model's columns.
         """
         # Query a long range down the first column used by this model
         first_col_a1 = _col_index_to_a1(self.start_column)
         rng = f"{self.sheet_name}!{first_col_a1}{self.start_row}:{first_col_a1}"
-        resp = self.service.spreadsheets().values().get(
-            spreadsheetId=self.spreadsheet_id, range=rng, majorDimension="ROWS"
-        ).execute()
+        resp = (
+            self.service.spreadsheets()
+            .values()
+            .get(spreadsheetId=self.spreadsheet_id, range=rng, majorDimension="ROWS")
+            .execute()
+        )
         values = resp.get("values", [])
         # The number of non-empty rows + offset gives the last populated row
         last_idx = len(values) - 1  # zero-based within the queried block

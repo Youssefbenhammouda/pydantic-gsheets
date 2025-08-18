@@ -28,12 +28,27 @@ Apply formats using `GoogleWorkSheet.apply_formats_for_model()`.
 ### `GSReadonly`
 Indicates that the field should not be written back to the sheet.
 
+
+## Smart Chips Support
+Smart chips are now supported. You can read and write Google Sheets smart chips (e.g., Drive file, people, date/time, and link chips) through the helper abstractions documented in [Smart Chips Integration in pydantic-gsheets](../smartchips.md). These integrate transparently with SheetRow models: when reading, chip metadata is parsed into structured Python values, and when writing, appropriate rich chip payloads are emitted to the API.
+
+### `GS_SMARTCHIP`
+`GS_SMARTCHIP( format_text: str = "@", smartchips: list[type[smartChip]] = [])`
+
+integrates smart chips into your model. Use it to specify the format and type and order of smart chips for a field.
+for example:
+
+```python
+field1: Annotated[smartChips,GS_SMARTCHIP("@ owner of @ and @ owner of @",smartchips=[peopleSmartChip,fileSmartChip,peopleSmartChip,fileSmartChip]),GSIndex(0), GSRequired()] 
+```
+
 ## `SheetRow`
 Base class for typed rows. Subclass it and annotate fields with
 `typing.Annotated` using the markers above. Instances are bound to a
 `GoogleWorkSheet` and row number when read or appended.
 
-> Support for advanced Google Sheets functionalities (such as chips) will be added in the future. For now, use [DriveFile](../drive_types).
+
+
 ### Properties
 - `row_number` – absolute row number within the sheet (1-based).
 - `worksheet` – the `GoogleWorkSheet` instance the row is bound to.
