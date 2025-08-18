@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import (
     Any,
@@ -188,7 +188,10 @@ def _col_index_to_a1(idx: int) -> str:
         s = chr(65 + rem) + s
     return s
 
-
+def gsheets_to_datetime(sheet_number: float) ->datetime:
+    # Google Sheets epoch starts at 1899-12-30
+    base_date = datetime(1899, 12, 30)
+    return base_date + timedelta(days=sheet_number)
 # =========
 # SheetRow
 # =========
@@ -302,7 +305,9 @@ class SheetRow(BaseModel):
                                 f"Warning: No smartchip was found in sheet for {spec.smartchip.format_text} at row {row_number}:{val}"
                             )
 
-
+            elif "userEnteredFormat" in raw and "numberFormat" in raw["userEnteredFormat"] and "DATE" in raw["userEnteredFormat"]["numberFormat"]["type"]:
+                n = raw['effectiveValue']['numberValue']
+                data[name] = gsheets_to_datetime(n)
             else:
                 data[name] = val
 
