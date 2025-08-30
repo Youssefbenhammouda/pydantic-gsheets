@@ -1,121 +1,289 @@
-# pydantic-gsheets
+markdown
+# pydantic-gsheets  
+
+[![PyPI](https://img.shields.io/pypi/v/pydantic-gsheets)](https://pypi.org/project/pydantic-gsheets/)  
+[![Python](https://img.shields.io/pypi/pyversions/pydantic-gsheets)](https://pypi.org/project/pydantic-gsheets/)  
+[![License](https://img.shields.io/github/license/youssefbenhammouda/pydantic-gsheets)](./LICENSE)  
+[![Docs](https://img.shields.io/badge/docs-online-blue)](https://youssefbenhammouda.github.io/pydantic-gsheets/)  
 
 A Python library for sending and receiving data from Google Sheets using [Pydantic](https://docs.pydantic.dev/) models.
 
-## Features
+With **pydantic-gsheets**, each row in a Google Sheet maps to a strongly-typed Pydantic model. You can read rows as validated objects and write updates back seamlessly.  
 
-- **Type-safe data mapping** — Convert Google Sheets rows into strongly typed Pydantic models.
-- **Validation** — Ensure incoming data meets schema requirements before processing.
-- **Serialization** — Write validated models back to Sheets easily.
-- **Batch operations** — Read and write large ranges in a single request.
-- **Built on official Google Sheets API** — Reliable and well-maintained foundation.
+### Features
+- Declarative column mapping (`GSIndex`)
+- Required fields (`GSRequired`)
+- Custom parsing (`GSParse`)
+- Number/date/time formatting (`GSFormat`)
+- Read-only columns (`GSReadonly`)
+- **Smart Chips**: People and Drive file rich links (experimental)
+- Bulk read / bulk write helpers
 
+📘 Full documentation: [pydantic-gsheets API reference](https://youssefbenhammouda.github.io/pydantic-gsheets/)
 
+💡 Beginner friendly: you only need basic Python and a Google account.
 
-# Usage
+---
 
-## Example: Inventory sheet with typed rows and optional Drive image download
+## Installation
 
-This example shows how to:
+Python 3.10+ is recommended.
 
-* authorize with **User OAuth**
-* map a sheet to a **typed Pydantic row model**
-* **stream rows** and (optionally) pre-download Drive images
-* **update** a row and **append** a new one
+```bash
+pip install pydantic-gsheets
+````
 
-```python
-from typing import Annotated, Optional
-from pydantic_gsheets import (
-    GoogleWorkSheet, SheetRow,
-    GSIndex, GSRequired, GSParse, 
-    GSFormat, DriveFile, GSDrive, 
-    get_drive_service, AuthConfig, 
-    AuthMethod, get_sheets_service
-)
+If you’re using a virtual environment:
 
-# --- Auth (User OAuth). Make sure your OAuth client and consent screen are set up.
-sheets = get_sheets_service(AuthConfig(
-    method=AuthMethod.USER_OAUTH,
-    client_secrets_file="client_secret.json",
-    token_cache_file=".tokens/sheets_token.json",
-))
-# For Drive-backed columns (optional), you also need a Drive client (same auth).
-drive = get_drive_service(AuthConfig(
-    method=AuthMethod.USER_OAUTH,
-    client_secrets_file="client_secret.json",
-    token_cache_file=".tokens/sheets_token.json",
-))
-
-# --- Small parsers for typed columns
-def parse_bool(v):
-    s = str(v).strip().lower()
-    if s in ("true", "1", "yes", "y"): return True
-    if s in ("false", "0", "no", "n"): return False
-    raise ValueError(f"Not a bool: {v}")
-
-def parse_float(v):
-    return float(str(v).replace(",", "."))
-
-# --- Define your sheet row model (adjust GSIndex to match your columns)
-class InventoryRow(SheetRow):
-    sku:      Annotated[str,   GSIndex(0), GSRequired()]
-    name:     Annotated[str,   GSIndex(1), GSRequired()]
-    price:    Annotated[float, GSIndex(2), GSParse(parse_float), GSFormat("NUMBER", "0.00")]
-    in_stock: Annotated[bool,  GSIndex(3), GSParse(parse_bool)]
-    photo:    Annotated[
-        Optional[DriveFile],
-        GSIndex(4),
-        # If the cell contains a Drive URL (or an =IMAGE("...drive...")), predownload it:
-        GSDrive(
-            predownload=True,
-            dest_dir="downloads/photos",
-            filename_template="{row}_{field}_{id}.{ext}",  # e.g., 12_photo_1AbCdEf.png
-            export_mime=None,     # set e.g. "image/png" for Google Drawings export
-            overwrite=False,
-        )
-    ]
-
-# --- Open a worksheet bound to your model
-sheet = GoogleWorkSheet(
-    model=InventoryRow,               # the row type for this sheet
-    service=sheets,                   # Sheets API client
-    spreadsheet_id="<YOUR-SPREADSHEET-ID>",
-    sheet_name="Inventory",
-    start_row=2,                      # data starts at row 2 (headers on row 1)
-    has_headers=True,
-    drive_service=drive,              # optional; enables GSDrive(predownload=...)
-)
-
-# --- Read and iterate typed rows
-for row in sheet.read_rows():
-    print(row.sku, row.name, row.price, row.in_stock,
-          getattr(row.photo, "local_path", None))  # path if predownloaded
-
-# --- Update an existing row and save it back
-first = next(sheet.read_rows())
-first.in_stock = False
-first.save()  # writes the row back to the same line
-
-# --- Append a brand-new row
-new_item = InventoryRow(
-    sku="SKU-12345",
-    name="Widget Mini",
-    price=19.99,
-    in_stock=True,
-    photo=None,  # or a Drive URL in the cell — it will be parsed on next read
-)
-sheet.append_row(new_item)  # binds new_item to its newly created row number
-
-# --- (Optional) apply number/date formats defined via GSFormat annotations
-sheet.apply_formats_for_model(InventoryRow)
+```bash
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+source .venv/bin/activate  # macOS/Linux
+pip install pydantic-gsheets
 ```
 
-### Notes
+---
 
-* **Column indices:** `GSIndex(0)` is the **first logical column** of your data region (i.e., relative to `start_column`). Adjust to match your sheet.
-* **Scopes:** if you use `DriveFile` (with `GSDrive`), your OAuth scopes must include Drive read access (e.g., `drive.readonly`) in addition to Sheets.
-* **Predownload:** `GSDrive(predownload=True)` will download files at **read time** if `drive_service` is provided. If you omit `drive_service`, the field still parses as a `DriveFile`, but no auto-download happens.
-* **Readonly cells:** fields marked with `GSReadonly()` will never be overwritten by `save()`/`append_row()`.
-* **Formatting:** `GSFormat` sets Google Sheets column number formats through `apply_formats_for_model(...)` – run it once after creating/binding a sheet.
+## Google Cloud Setup (One-Time)
 
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) and create or select a project.
+2. Enable these APIs:
+
+   * **Google Sheets API**
+   * **Google Drive API** (required for Drive file smart chips or file metadata)
+3. Configure an OAuth consent screen (choose *External* for testing).
+4. Create OAuth client credentials of type **Desktop** and download the JSON (e.g., `client_secret.json`).
+5. Decide on a token cache location (e.g., `.tokens/google.json`). This will be created automatically on first authentication.
+
+---
+
+## Quick Start
+
+```python
+from typing import Annotated
+from pydantic_gsheets import (
+    AuthConfig, AuthMethod, get_sheets_service,
+    GoogleWorkSheet, SheetRow,
+    GSIndex, GSRequired
+)
+
+# 1. Authenticate (first run opens a browser for consent)
+svc = get_sheets_service(AuthConfig(
+    method=AuthMethod.USER_OAUTH,
+    client_secrets_file="client_secret.json",
+    token_cache_file=".tokens/google.json",
+))
+
+# 2. Define a row model
+class UserRow(SheetRow):
+    name: Annotated[str, GSRequired()]
+    email: Annotated[str, GSRequired()]
+    age: Annotated[int]
+
+# 3. Bind to a worksheet (tab)
+sheet = GoogleWorkSheet(
+    model=UserRow,
+    service=svc,
+    spreadsheet_id="<SPREADSHEET_ID>",  # replace with your sheet ID
+    sheet_name="Users",   # tab title
+    start_row=2           # row 1 is headers
+)
+
+# 4. Read rows
+for row in sheet.rows():
+    print(row.name, row.email)
+
+# 5. Append a new row
+new_user = UserRow(name="Alice", email="alice@example.com", age=30)
+sheet.saveRow(new_user)
+```
+
+---
+
+## Core Concepts
+
+| Marker                                | Purpose                                               |
+| ------------------------------------- | ----------------------------------------------------- |
+| `GSIndex(i)`                          | Zero-based column index relative to `start_column`.   |
+| `GSRequired()`                        | Field must not be empty on read or write.             |
+| `GSParse(func)`                       | Apply `func(raw_value)` before validation.            |
+| `GSFormat(type, pattern?)`            | Assigns Google Sheets number/date format.             |
+| `GSReadonly()`                        | Value is read but never written back.                 |
+| `GS_SMARTCHIP(fmt, smartchips=[...])` | Define Smart Chip format placeholders (experimental). |
+
+### Lifecycle
+
+* **Read:** Cells → optional parse → Pydantic validation → `SheetRow` instance
+* **Modify:** Update attributes in Python
+* **Write:** Use `save()` (single) or `saveRows([...])` (bulk)
+
+---
+
+## Examples
+
+### Formatting Dates
+
+```python
+from datetime import datetime
+from typing import Annotated
+from pydantic_gsheets import GSFormat, GSIndex, GSRequired, SheetRow
+
+class LogRow(SheetRow):
+    event: Annotated[str, GSIndex(0), GSRequired()]
+    created_at: Annotated[
+        datetime,
+        GSIndex(1),
+        GSRequired(),
+        GSFormat("DATE_TIME", "dd-MM-yyyy HH:mm")
+    ]
+```
+
+### Custom Parsing
+
+```python
+def to_int_or_zero(value: str) -> int:
+    return int(value) if value.strip().isdigit() else 0
+
+class ParsedRow(SheetRow):
+    raw_number: Annotated[int, GSIndex(0), GSParse(to_int_or_zero)]
+```
+
+### Read-only Columns
+
+```python
+class Employee(SheetRow):
+    id: Annotated[int, GSIndex(0), GSRequired(), GSReadonly()]
+    name: Annotated[str, GSIndex(1), GSRequired()]
+```
+
+### Bulk Writes
+
+```python
+rows = [UserRow(name=f"User {i}", email=f"u{i}@ex.com", age=20+i) for i in range(5)]
+sheet.saveRows(rows)
+```
+
+---
+
+## Smart Chips (Experimental)
+
+Smart Chips let you mix plain text with structured entities (people and Drive file links).
+
+⚠️ Only Google Drive file links can currently be written as chips. Other service links (YouTube, Calendar, etc.) are read-only.
+
+```python
+from typing import Annotated
+from pydantic_gsheets.types import (
+    smartChips, GS_SMARTCHIP,
+    peopleSmartChip, fileSmartChip
+)
+
+class OwnershipRow(SheetRow):
+    ownership: Annotated[
+        smartChips,
+        GS_SMARTCHIP(
+            "@ owner of @",
+            smartchips=[peopleSmartChip, fileSmartChip]
+        ),
+        GSIndex(0), GSRequired()
+    ]
+```
+
+---
+
+## Creating Sheets Programmatically
+
+```python
+sheet = GoogleWorkSheet.create_sheet(
+    model=UserRow,
+    service=svc,
+    spreadsheet_id="<SPREADSHEET_ID>",
+    sheet_name="Users",
+    add_column_headers=True,
+    skip_if_exists=True
+)
+```
+
+---
+
+## Error Handling
+
+* `RequiredValueError` → Raised when a `GSRequired` field is blank.
+* Pydantic validation errors → Raised if a cell’s value cannot be coerced to the annotated type.
+
+---
+
+## Tips for Beginners
+
+* Add `client_secret.json` and `.tokens/` to your `.gitignore`.
+* Start with a simple sheet (2–3 columns) before scaling up.
+* If writes seem to “do nothing,” check for `GSReadonly` or missing `GSIndex`.
+* Use `refresh=True` when you need the latest remote state.
+
+---
+
+## FAQ
+
+**Q: Do I need the Drive API enabled?**
+A: Only if you use smart chips involving Drive files or file helpers.
+
+**Q: Can I append rows without indices?**
+A: Yes. Un-indexed fields follow declaration order. Explicit indices reserve/skip columns.
+
+**Q: How do I format currency?**
+A: Use `GSFormat("CURRENCY", "€#,##0.00")`.
+
+---
+
+## Contributing
+
+Contributions are welcome! 🎉
+
+1. Fork & clone
+2. Create a virtual environment and install dev dependencies (`pip install -e ".[dev]"`)
+3. Add or adjust tests in `tests/`
+4. Open an [issue](../../issues) or a PR with a clear description
+
+---
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md)
+
+---
+
+## Minimal End-to-End Script
+
+```python
+from typing import Annotated
+from pydantic_gsheets import (
+    AuthConfig, AuthMethod, get_sheets_service,
+    GoogleWorkSheet, SheetRow, GSIndex, GSRequired
+)
+
+svc = get_sheets_service(AuthConfig(
+    method=AuthMethod.USER_OAUTH,
+    client_secrets_file="client_secret.json",
+    token_cache_file=".tokens/google.json",
+))
+
+class Demo(SheetRow):
+    title: Annotated[str, GSIndex(0), GSRequired()]
+    views: Annotated[int, GSIndex(1)]
+
+sheet = GoogleWorkSheet(Demo, svc, "<SPREADSHEET_ID>", "Demo", start_row=2)
+
+# Append
+items = [Demo(title=f"Post {i}", views=i*10) for i in range(3)]
+sheet.saveRows(items)
+
+# Read back
+for row in sheet.rows(refresh=True):
+    print(row.title, row.views)
+```
+
+---
+
+## License  
+MIT License © 2025 Youssef Benhammouda
 

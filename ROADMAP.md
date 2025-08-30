@@ -6,9 +6,10 @@ This document outlines the planned steps for developing `pydantic-gsheets` from 
 - [X] Implement authentication and connection helpers for the Google Sheets API.
 - [X] Create utilities to map rows to Pydantic models and back.
 - [X] Support reading data ranges and writing batch updates.
-- [\] Support for smart chips.
+- [X] Support for smart chips.
   - [X] Implement reading smart chips
-  - [ ] Implement writing smart chips.
+  - [X] Implement writing smart chips.
+- [ ] Add logging.
 - [ ] Support rate limiting for Google sheet API.
 
 ## Phase 2: Usability Enhancements

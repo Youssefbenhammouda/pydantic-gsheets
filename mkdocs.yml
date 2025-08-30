@@ -4,7 +4,7 @@ repo_url: https://github.com/Youssefbenhammouda/pydantic-gsheets
 nav:
   - Home: index.md
   - Authentication: auth.md
-  - Drive file helpers: drive_types.md
   - Worksheet interaction: worksheet.md
+  - Smart chips: smartchips.md
 theme:
   name: material

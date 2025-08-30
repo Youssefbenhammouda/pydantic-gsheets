@@ -62,23 +62,11 @@ data[0].name = smartChips(display_text="John Doe", format_text="@")
 data[0].save()
 ```
 
-## Helper Functions
-
-The `split_at_tokens` function is provided to help parse and tokenize strings containing smart chip markers (`@`). This is useful for processing and validating input data.
-
-```python
-def split_at_tokens(s: str) -> list[str]:
-    # Implementation here
-```
-
 ## Limitations
 
 - Only Google Drive file chips can be written. Other types of chips, such as YouTube or Calendar event chips, are read-only.
 - Ensure proper authorization to avoid runtime errors.
 
-## Conclusion
-
-Smart chips in `pydantic-gsheets` provide a flexible and powerful way to enrich your Google Sheets with interactive data. By following the guidelines and examples provided, you can seamlessly integrate this feature into your projects.
 
 ## Smart Chip Object Definitions
 

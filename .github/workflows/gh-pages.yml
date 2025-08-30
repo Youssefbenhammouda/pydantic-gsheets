@@ -1,9 +1,8 @@
 name: Deploy MkDocs site to GitHub Pages
 
 on:
-  push:
-    branches:
-      - main  # trigger on pushes to main branch
+  release:
+    types: [published]
 
 permissions:
   contents: write

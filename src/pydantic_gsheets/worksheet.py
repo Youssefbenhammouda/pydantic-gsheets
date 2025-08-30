@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from enum import Enum
 from typing import (
     Any,
@@ -33,6 +33,7 @@ from googleapiclient.errors import HttpError
 from .exceptions import RequiredValueError
 from .types.smartChips_ import (
     GS_SMARTCHIP,
+    fileSmartChip,
     richLinkProperties,
     smartChip,
     smartChips,
@@ -111,7 +112,7 @@ def _extract_field_specs(model_cls: Type["SheetRow"]) -> Dict[str, _FieldSpec]:
     """
     specs: Dict[str, _FieldSpec] = {}
     hints = get_type_hints(model_cls, include_extras=True)
-
+    last_index = 0
     for fname, annotated in hints.items():
         if fname.startswith("_"):
             continue
@@ -143,9 +144,25 @@ def _extract_field_specs(model_cls: Type["SheetRow"]) -> Dict[str, _FieldSpec]:
             elif isinstance(extra, GS_SMARTCHIP):
                 smartchip.format_text = extra.format_text
                 smartchip.smartchips = extra.smartchips
-
+                if not (
+                    (
+                        l := len(
+                            set(
+                                x
+                                for x in extra.smartchips
+                                if issubclass(x, richLinkProperties)
+                            )
+                        )
+                    )
+                    <= 1
+                    and (l != 1 or fileSmartChip in extra.smartchips)
+                ):
+                    readonly = True
         if index is None:
-            raise ValueError(f"Field '{fname}' is missing GSIndex() annotation.")
+            index = last_index
+        else:
+            last_index = index
+        last_index += 1
 
         specs[fname] = _FieldSpec(
             name=fname,
@@ -188,10 +205,24 @@ def _col_index_to_a1(idx: int) -> str:
         s = chr(65 + rem) + s
     return s
 
-def gsheets_to_datetime(sheet_number: float) ->datetime:
+
+def gsheets_to_datetime(sheet_number: float) -> date:
     # Google Sheets epoch starts at 1899-12-30
     base_date = datetime(1899, 12, 30)
     return base_date + timedelta(days=sheet_number)
+
+
+def datetime_to_gsheets(d: date | datetime) -> float:
+    """Convert Python date/datetime to Google Sheets serial number."""
+    base_date = datetime(1899, 12, 30)
+
+    # If input is a date, convert to datetime at midnight
+    if isinstance(d, date) and not isinstance(d, datetime):
+        d = datetime.combine(d, datetime.min.time())
+
+    return (d - base_date).total_seconds() / 86400
+
+
 # =========
 # SheetRow
 # =========
@@ -260,10 +291,12 @@ class SheetRow(BaseModel):
             if spec.smartchip.is_smartchips:
                 copySmartChips = spec.smartchip.smartchips.copy()
                 data[name] = smartChips(
-                    format_text=spec.smartchip.format_text, chipRuns=[],display_text=val
+                    format_text=spec.smartchip.format_text,
+                    chipRuns=[],
+                    display_text=val,
                 )
 
-                for part in split_at_tokens(spec.smartchip.format_text):
+                for part in split_at_tokens(spec.smartchip.format_text).values():
                     if part == "@":
 
                         try:
@@ -305,11 +338,15 @@ class SheetRow(BaseModel):
                                 f"Warning: No smartchip was found in sheet for {spec.smartchip.format_text} at row {row_number}:{val}"
                             )
 
-            elif "userEnteredFormat" in raw and "numberFormat" in raw["userEnteredFormat"] and "DATE" in raw["userEnteredFormat"]["numberFormat"]["type"]:
-                n = raw['effectiveValue']['numberValue']
+            elif (
+                "userEnteredFormat" in raw
+                and "numberFormat" in raw["userEnteredFormat"]
+                and "DATE" in raw["userEnteredFormat"]["numberFormat"]["type"]
+            ):
+                n = raw["effectiveValue"]["numberValue"]
                 data[name] = gsheets_to_datetime(n)
             else:
-                data[name] = val
+                data[name] = val 
 
         try:
             inst = cls(**data)  # Pydantic validation of types
@@ -557,6 +594,8 @@ class GoogleWorkSheet(Generic[T]):
             ):
                 self._cache_put(inst)
                 yield inst
+        else:
+            yield from self._row_instances.values()
 
     def get(
         self,
@@ -784,7 +823,7 @@ class GoogleWorkSheet(Generic[T]):
         end_col = start_col + width - 1
         a1_start = _col_index_to_a1(start_col)
         a1_end = _col_index_to_a1(end_col)
-        rng = f"{self.sheet_name}!{a1_start}{self.start_row}:{a1_end}"
+        rng = f"{self.sheet_name}!{a1_start}{self.start_row}:{a1_end}{max(self.start_row,self.get_last_row_number())}"
 
         # Fetch rows
         resp = (
@@ -840,7 +879,7 @@ class GoogleWorkSheet(Generic[T]):
             key=lambda r: r._row_number  # pyright: ignore[reportArgumentType]
         )
         specs = self._model._specs()
-        all_cols = [spec.index for spec in specs.values()]
+        all_cols = {spec.index: spec for spec in specs.values()}
         editable_cols = {spec.index for spec in specs.values() if not spec.readonly}
 
         # Row span that we'll touch (for formatting)
@@ -849,36 +888,6 @@ class GoogleWorkSheet(Generic[T]):
             for inst in instances  # pyright: ignore[reportArgumentType]
         )
         max_row = lastrow
-
-        # Helper: convert a Python value to a Sheets "ExtendedValue"
-        # We keep it simple and predictable; formulas must come as strings starting with '='.
-        from datetime import datetime, date
-
-        def _to_extended_value(v):
-            if v is None:
-                # Write nothing for None: leaves existing cell as-is for existing rows,
-                # and keeps new rows blank.
-                return None
-            if isinstance(v, bool):
-                return {"boolValue": v}
-            if isinstance(v, (int, float)):
-                return {"numberValue": float(v)}
-            if isinstance(v, (datetime, date)):
-                # Google Sheets stores dates as days since 1899-12-30.
-                # For date-only values, no time fraction.
-                # NOTE: if you rely on date formatting, ensure spec.fmt is set to a date/Datetime format.
-                epoch = datetime(1899, 12, 30)
-                if isinstance(v, date) and not isinstance(v, datetime):
-                    v = datetime(v.year, v.month, v.day)
-                delta = v - epoch  # type: ignore[arg-type]
-                serial = (
-                    delta.days + (delta.seconds + delta.microseconds / 1e6) / 86400.0
-                )
-                return {"numberValue": serial}
-            if isinstance(v, str) and v.startswith("="):
-                return {"formulaValue": v}
-            # Fallback: plain string
-            return {"stringValue": str(v)}
 
         requests = []
 
@@ -894,12 +903,47 @@ class GoogleWorkSheet(Generic[T]):
                 # Preserve readonly columns on existing rows
                 if rn not in new_rows and col_idx not in editable_cols:
                     continue
+                data: dict[str, List | dict | str | float | int] = {
+                    "rows": [{"values": [{"userEnteredValue": {"stringValue" if isinstance(cell_val, str) else "numberValue": cell_val}}]}],
+                    "fields": "userEnteredValue",
+                }
 
-                ev = _to_extended_value(cell_val)
-                if ev is None:
-                    # Skip writing entirely to avoid clearing existing content
-                    continue
+                
+                if isinstance(cell_val, smartChips):
+                    data["fields"] += ",chipRuns"  # type: ignore
+                    data["rows"] = [{"values": [{"userEnteredValue": {}}]}]
 
+                    obj = data["rows"][0]["values"][0]
+                    obj["userEnteredValue"]["stringValue"] = (
+                        cell_val.format_text.replace("\\@", "@")
+                    )
+                    sections = [
+                        x[0]
+                        for x in split_at_tokens(cell_val.format_text.replace("\\@", " ")).items()
+                        if x[1] == "@"
+                    ]
+                    l = len(sections)
+                    obj["chipRuns"] = [
+                        {**x._to_dict(), "startIndex": sections[i]}
+                        for i, x in enumerate(cell_val.chipRuns)
+                        if i < l
+                    ]
+
+                elif (fmt := all_cols[col_idx].fmt) is not None:
+                    if isinstance(cell_val, date):
+                        n = datetime_to_gsheets(cell_val)
+                    else:
+                        n = float(cell_val)
+                    data["fields"] = "userEnteredValue,userEnteredFormat.numberFormat"
+                    data["rows"] = [
+                        {"values": [{"userEnteredValue": {"numberValue": n},"userEnteredFormat":{"numberFormat": {
+                            "type": fmt.type,
+                            **({"pattern": fmt.pattern} if fmt.pattern is not None else {})
+                        }}}]}
+                    ]  # type: ignore
+                    
+
+                
                 requests.append(
                     {
                         "updateCells": {
@@ -910,49 +954,22 @@ class GoogleWorkSheet(Generic[T]):
                                 "startColumnIndex": self.start_column + col_idx,
                                 "endColumnIndex": self.start_column + col_idx + 1,
                             },
-                            "rows": [{"values": [{"userEnteredValue": ev}]}],
-                            "fields": "userEnteredValue",
+                            **data,
                         }
                     }
                 )
 
-        # 2) Column-level formatting, once per column across the affected rows
-        for spec in specs.values():
-            if spec.fmt is None:
-                continue
-            fmt = spec.fmt
-            numfmt = {"type": fmt.type}
-            if fmt.pattern is not None:
-                numfmt["pattern"] = fmt.pattern
-
-            requests.append(
-                {
-                    "repeatCell": {
-                        "range": {
-                            "sheetId": self.sheet_id,
-                            "startRowIndex": min_row - 1,
-                            "endRowIndex": max_row,
-                            "startColumnIndex": self.start_column + spec.index,
-                            "endColumnIndex": self.start_column + spec.index + 1,
-                        },
-                        "cell": {"userEnteredFormat": {"numberFormat": numfmt}},
-                        "fields": "userEnteredFormat.numberFormat",
-                    }
-                }
-            )
-
         if not requests:
             return
-
+        
         # Single API call for both values and formatting
         self.service.spreadsheets().batchUpdate(
-            spreadsheetId=self.spreadsheet_id, body={"requests": requests}
+            spreadsheetId=self.spreadsheet_id,
+            body={"requests": requests},
         ).execute()
 
         # Optional: refresh cache
-        if hasattr(self, "_cache_put"):
-            for inst in instances:
-                self._cache_put(inst)
+        for _ in self.rows(refresh=True):pass
 
     def get_last_row_number(
         self,

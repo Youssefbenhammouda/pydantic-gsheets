@@ -7,5 +7,5 @@ applications on top of the library.
 ## Contents
 
 - [Authentication](auth.md)
-- [Drive file helpers](drive_types.md)
 - [Worksheet interaction](worksheet.md)
+- [Smartchips](smartchips.md)

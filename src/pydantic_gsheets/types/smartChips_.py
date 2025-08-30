@@ -2,13 +2,14 @@ from dataclasses import dataclass
 from enum import Enum
 
 from pydantic import BaseModel, Field
-from typing import ClassVar
+from typing import Any, ClassVar
 from ..exceptions import noWriteSupport
-from abc import ABC
+from abc import ABC, abstractmethod
 
 class smartChip(BaseModel,ABC):
     __fieldName__: ClassVar[str]
-
+    @abstractmethod
+    def _to_dict(self) -> dict[Any,Any]:...
 @dataclass
 class GS_SMARTCHIP:
     
@@ -81,26 +82,32 @@ class youtubeSmartChip(richLinkProperties):
 
 #helpers
 
-def split_at_tokens(s: str) -> list[str]:
-    result = []
+def split_at_tokens(s: str) -> dict[int, str]:
+    """
+    Splits a string into chunks keyed by starting index in the original string.
+    Escaped form '\\@' is treated as a literal '@'.
+    """
+    result = {}
     buffer = []
+    seg_start = 0
     i = 0
     while i < len(s):
-        if s[i] == "@":
-            if i + 1 < len(s) and s[i + 1] == "@":
-                # Escaped "@@" → literal "@"
-                buffer.append("@")
-                i += 2
-            else:
-                # Flush buffer before adding standalone "@"
-                if buffer:
-                    result.append("".join(buffer))
-                    buffer = []
-                result.append("@")
-                i += 1
+        if s[i] == "\\" and i + 1 < len(s) and s[i + 1] == "@":
+            buffer.append("@")
+            i += 2
+        elif s[i] == "@":
+            # flush buffer before the token
+            if buffer:
+                result[seg_start] = "".join(buffer)
+                buffer = []
+            result[i] = "@"
+            i += 1
+            seg_start = i
         else:
+            if not buffer:
+                seg_start = i
             buffer.append(s[i])
             i += 1
     if buffer:
-        result.append("".join(buffer))
+        result[seg_start] = "".join(buffer)
     return result

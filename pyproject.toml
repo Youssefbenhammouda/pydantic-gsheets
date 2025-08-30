@@ -18,10 +18,17 @@ dependencies = [
 
 [project.optional-dependencies]
 test = [
-    "pytest","Faker"
+  "pytest",
+  "Faker",
 ]
 docs = [
   "mkdocs-material>=9.6",
+]
+dev = [
+  "pytest",
+  
+  "mkdocs-material>=9.6",
+ 
 ]
 
 

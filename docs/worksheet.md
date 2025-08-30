@@ -9,8 +9,9 @@ row data.
 Raised when a field marked as required is empty when reading or writing.
 
 ### `GSIndex`
-`GSIndex(index: int)` marks the zero-based column position of a field
-relative to the worksheet's `start_column`.
+`GSIndex(index: int)` [Optional] marks the zero-based column position of a field relative to the worksheet's `start_column`. 
+
+If not specified, columns will follow the same order as defined in the class. You can set the index for specific columns to skip a range; subsequent columns will align next to the last column with an explicitly set index.
 
 ### `GSRequired`
 Marks a field as mandatory. Missing values raise `RequiredValueError` on
@@ -28,9 +29,10 @@ Apply formats using `GoogleWorkSheet.apply_formats_for_model()`.
 ### `GSReadonly`
 Indicates that the field should not be written back to the sheet.
 
+If the column is [smartChips](/smartchips.md) and have a link chip other than google drive, it will be considered automatically as read-only, see [Writing Smart Chips](/smartchips/#writing-smart-chips).
 
 ## Smart Chips Support
-Smart chips are now supported. You can read and write Google Sheets smart chips (e.g., Drive file, people, date/time, and link chips) through the helper abstractions documented in [Smart Chips Integration in pydantic-gsheets](../smartchips.md). These integrate transparently with SheetRow models: when reading, chip metadata is parsed into structured Python values, and when writing, appropriate rich chip payloads are emitted to the API.
+Smart chips are now supported. You can read and write Google Sheets smart chips (e.g., Drive file, people, date/time, and link chips) through the helper abstractions documented in [Smart Chips Integration in pydantic-gsheets](/smartchips.md). These integrate transparently with SheetRow models: when reading, chip metadata is parsed into structured Python values, and when writing, appropriate rich chip payloads are emitted to the API.
 
 ### `GS_SMARTCHIP`
 `GS_SMARTCHIP( format_text: str = "@", smartchips: list[type[smartChip]] = [])`
