@@ -1,9 +1,8 @@
 markdown
 # pydantic-gsheets  
 
-[![PyPI](https://img.shields.io/pypi/v/pydantic-gsheets)](https://pypi.org/project/pydantic-gsheets/)  
-[![Python](https://img.shields.io/pypi/pyversions/pydantic-gsheets)](https://pypi.org/project/pydantic-gsheets/)  
-[![License](https://img.shields.io/github/license/youssefbenhammouda/pydantic-gsheets)](./LICENSE)  
+[![PyPI](https://img.shields.io/pypi/v/pydantic-gsheets)](https://pypi.org/project/pydantic-gsheets/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-online-blue)](https://youssefbenhammouda.github.io/pydantic-gsheets/)  
 
 A Python library for sending and receiving data from Google Sheets using [Pydantic](https://docs.pydantic.dev/) models.
