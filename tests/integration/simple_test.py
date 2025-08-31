@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 from typing import Annotated, Type
 import pytest
@@ -111,6 +111,11 @@ def test_can_create_worksheet(test_worksheet1):
     queried_data = list(test_worksheet1.rows(refresh=True,skip_rows_missing_required=False))
     assert queried_data == data, f"Expected {data} but got {queried_data}"
 
+def assert_rows_equal(expected: list[SampleData2], actual: list[SampleData2]):
+    for e, a in zip(expected, actual):
+        assert e.title == a.title
+        assert e.author == a.author
+        assert abs(e.published_date - a.published_date) < timedelta(seconds=1)
 
 def test_read_and_write_same_data(test_worksheet2):
 
