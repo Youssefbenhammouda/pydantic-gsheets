@@ -9,6 +9,7 @@ This document outlines the planned steps for developing `pydantic-gsheets` from 
 - [X] Support for smart chips.
   - [X] Implement reading smart chips
   - [X] Implement writing smart chips.
+- [ ] Structure package imports.
 - [ ] Add logging.
 - [ ] Support rate limiting for Google sheet API.
 

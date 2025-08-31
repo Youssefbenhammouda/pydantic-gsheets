@@ -912,14 +912,14 @@ class GoogleWorkSheet(Generic[T]):
                 if isinstance(cell_val, smartChips):
                     data["fields"] += ",chipRuns"  # type: ignore
                     data["rows"] = [{"values": [{"userEnteredValue": {}}]}]
-
+                    format_text = all_cols[col_idx].smartchip.format_text
                     obj = data["rows"][0]["values"][0]
                     obj["userEnteredValue"]["stringValue"] = (
-                        cell_val.format_text.replace("\\@", "@")
+                        format_text.replace("\\@", "@")
                     )
                     sections = [
                         x[0]
-                        for x in split_at_tokens(cell_val.format_text.replace("\\@", " ")).items()
+                        for x in split_at_tokens(format_text.replace("\\@", " ")).items()
                         if x[1] == "@"
                     ]
                     l = len(sections)

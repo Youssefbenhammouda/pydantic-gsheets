@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from pydantic import BaseModel, Field
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Optional
 from ..exceptions import noWriteSupport
 from abc import ABC, abstractmethod
 
@@ -21,8 +21,8 @@ class smartchipConf(BaseModel):
     smartchips:list[type[smartChip]] = []
     format_text: str = "@"
 class smartChips(BaseModel):
-    display_text: str = Field(..., description="The display text for the rich link.")
-    format_text: str 
+    display_text: Optional[str] = Field( description="The display text for the rich link.",default=None)
+    format_text: Optional[str]  = None
     chipRuns: list[smartChip] = []
 class richLinkProperties(smartChip):
     __fieldName__: ClassVar[str] = "richLinkProperties"
