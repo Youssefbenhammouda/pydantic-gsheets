@@ -272,8 +272,6 @@ class SheetRow(BaseModel):
             ).get("stringValue", None)
 
             # Apply parser if provided
-            if val is None:
-                continue
             if spec.parser and val is not None:
                 try:
                     val = spec.parser(val)
@@ -347,7 +345,7 @@ class SheetRow(BaseModel):
             ):
                 n = raw["effectiveValue"]["numberValue"]
                 data[name] = gsheets_to_datetime(n)
-            else:
+            elif val is not None:
                 data[name] = val
 
         try:
