@@ -346,7 +346,7 @@ class SheetRow(BaseModel):
                 n = raw["effectiveValue"]["numberValue"]
                 data[name] = gsheets_to_datetime(n)
             else:
-                data[name] = val 
+                data[name] = val
 
         try:
             inst = cls(**data)  # Pydantic validation of types
@@ -383,7 +383,7 @@ class SheetRow(BaseModel):
 
             # Normalize booleans for Sheets
             if isinstance(val, bool):
-                out[spec.index] = "TRUE" if val else "FALSE"
+                out[spec.index] = val
             else:
 
                 out[spec.index] = val if val is not None else ""
@@ -903,23 +903,33 @@ class GoogleWorkSheet(Generic[T]):
                 # Preserve readonly columns on existing rows
                 if rn not in new_rows and col_idx not in editable_cols:
                     continue
-                data: dict[str, List | dict | str | float | int] = {
-                    "rows": [{"values": [{"userEnteredValue": {"stringValue" if isinstance(cell_val, str) else "numberValue": cell_val}}]}],
+                if isinstance(cell_val, bool):
+                    user_entered_value: dict[str, bool | float | int | str] = {
+                        "boolValue": cell_val
+                    }
+                elif isinstance(cell_val, str):
+                    user_entered_value = {"stringValue": cell_val}
+                else:
+                    user_entered_value = {"numberValue": cell_val}
+
+                data: dict[str, List | dict | str | float | int | bool] = {
+                    "rows": [{"values": [{"userEnteredValue": user_entered_value}]}],
                     "fields": "userEnteredValue",
                 }
 
-                
                 if isinstance(cell_val, smartChips):
                     data["fields"] += ",chipRuns"  # type: ignore
                     data["rows"] = [{"values": [{"userEnteredValue": {}}]}]
                     format_text = all_cols[col_idx].smartchip.format_text
                     obj = data["rows"][0]["values"][0]
-                    obj["userEnteredValue"]["stringValue"] = (
-                        format_text.replace("\\@", "@")
+                    obj["userEnteredValue"]["stringValue"] = format_text.replace(
+                        "\\@", "@"
                     )
                     sections = [
                         x[0]
-                        for x in split_at_tokens(format_text.replace("\\@", " ")).items()
+                        for x in split_at_tokens(
+                            format_text.replace("\\@", " ")
+                        ).items()
                         if x[1] == "@"
                     ]
                     l = len(sections)
@@ -936,14 +946,25 @@ class GoogleWorkSheet(Generic[T]):
                         n = float(cell_val)
                     data["fields"] = "userEnteredValue,userEnteredFormat.numberFormat"
                     data["rows"] = [
-                        {"values": [{"userEnteredValue": {"numberValue": n},"userEnteredFormat":{"numberFormat": {
-                            "type": fmt.type,
-                            **({"pattern": fmt.pattern} if fmt.pattern is not None else {})
-                        }}}]}
+                        {
+                            "values": [
+                                {
+                                    "userEnteredValue": {"numberValue": n},
+                                    "userEnteredFormat": {
+                                        "numberFormat": {
+                                            "type": fmt.type,
+                                            **(
+                                                {"pattern": fmt.pattern}
+                                                if fmt.pattern is not None
+                                                else {}
+                                            ),
+                                        }
+                                    },
+                                }
+                            ]
+                        }
                     ]  # type: ignore
-                    
 
-                
                 requests.append(
                     {
                         "updateCells": {
@@ -961,7 +982,7 @@ class GoogleWorkSheet(Generic[T]):
 
         if not requests:
             return
-        
+
         # Single API call for both values and formatting
         self.service.spreadsheets().batchUpdate(
             spreadsheetId=self.spreadsheet_id,
@@ -969,7 +990,8 @@ class GoogleWorkSheet(Generic[T]):
         ).execute()
 
         # Optional: refresh cache
-        for _ in self.rows(refresh=True):pass
+        for _ in self.rows(refresh=True):
+            pass
 
     def get_last_row_number(
         self,

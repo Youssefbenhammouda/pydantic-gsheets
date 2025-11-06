@@ -1,7 +1,7 @@
 markdown
 # pydantic-gsheets  
 
-[![PyPI](https://img.shields.io/pypi/v/pydantic-gsheets)](https://pypi.org/project/pydantic-gsheets/)
+    [![PyPI](https://img.shields.io/pypi/v/pydantic-gsheets)](https://pypi.org/project/pydantic-gsheets/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-online-blue)](https://youssefbenhammouda.github.io/pydantic-gsheets/)  
 
