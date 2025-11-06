@@ -272,7 +272,7 @@ class SheetRow(BaseModel):
             ).get("stringValue", None)
 
             # Apply parser if provided
-            if spec.parser and val is not None:
+            if spec.parser:
                 try:
                     val = spec.parser(val)
                 except Exception as e:
