@@ -47,3 +47,24 @@ def test_gs_required_bare_class_raises_schema_error():
 def test_gs_required_class_getitem_raises():
     with pytest.raises(SchemaError):
         _ = GSRequired[str]
+
+
+def test_gs_parse_repr():
+    assert "int" in repr(GSParse(int))
+
+
+def test_gs_required_custom_message():
+    r = GSRequired("must not be blank")
+    assert r.message == "must not be blank"
+    assert "must not be blank" in repr(r)
+
+
+def test_gs_index_zero():
+    assert GSIndex(0).index == 0
+
+
+def test_gs_format_with_pattern():
+    f = GSFormat("DATE", "YYYY-MM-DD")
+    assert f.number_format_type == "DATE"
+    assert f.pattern == "YYYY-MM-DD"
+    assert "YYYY-MM-DD" in repr(f)
