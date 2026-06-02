@@ -1,0 +1,1467 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A Python library for sending and receiving data from Google Sheets using Pydantic.">
+      
+      
+      
+      
+        <link rel="prev" href="../auth/">
+      
+      
+        <link rel="next" href="../smartchips/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Worksheet interaction - Pydantic Google Sheets Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#worksheet-interaction" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Pydantic Google Sheets Documentation" class="md-header__button md-logo" aria-label="Pydantic Google Sheets Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Pydantic Google Sheets Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Worksheet interaction
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Youssefbenhammouda/pydantic-gsheets" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Pydantic Google Sheets Documentation" class="md-nav__button md-logo" aria-label="Pydantic Google Sheets Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Pydantic Google Sheets Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Youssefbenhammouda/pydantic-gsheets" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../auth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Worksheet interaction
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Worksheet interaction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#annotation-markers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Annotation Markers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Annotation Markers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#gsindexindex-int" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GSIndex(index: int)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gsrequiredmessage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GSRequired(message="")
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gsparsefunc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GSParse(func)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gsformatnumber_format_type-patternnone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GSFormat(number_format_type, pattern=None)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gsreadonly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GSReadonly()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gstreatdashasempty" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GSTreatDashAsEmpty()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gs_smartchipformat_text-smartchips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GS_SMARTCHIP(format_text="@", smartchips=[...])
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Errors
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Errors">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#requiredvalueerrorfield_name-row_number" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RequiredValueError(field_name, row_number)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parseerrorfield_name-col_index-cause" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ParseError(field_name, col_index, cause)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#unboundrowerror" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UnboundRowError
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#schemaerror" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SchemaError
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ratelimiterror-transientapierror" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RateLimitError / TransientAPIError
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#requiredvalueskippedwarning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RequiredValueSkippedWarning
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sheetrow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SheetRow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SheetRow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#properties" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Properties
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Methods
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#googleworksheett" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GoogleWorkSheet[T]
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GoogleWorkSheet[T]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#constructor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Constructor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#factory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Factory
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Factory">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#googleworksheetcreate_sheetmodel-service-spreadsheet_id-sheet_name-add_column_headerstrue-skip_if_existstrue-start_row2-start_column0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GoogleWorkSheet.create_sheet(model, service, spreadsheet_id, sheet_name, *, add_column_headers=True, skip_if_exists=True, start_row=2, start_column=0)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read Methods
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Read Methods">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rows-refreshfalse-skip_rows_missing_requiredtrue-page_sizenone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rows(*, refresh=False, skip_rows_missing_required=True, page_size=None)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#getrow_number-use_cachetrue-refreshfalse-skip_rows_missing_requiredtrue-t-none" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get(row_number, *, use_cache=True, refresh=False, skip_rows_missing_required=True) → T | None
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#write-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Write Methods
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Write Methods">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#saverowinst-saverowsrows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        saveRow(inst) / saveRows(rows)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#append_rowinstance-t" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        append_row(instance) → T
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#append_rowsinstances-listt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        append_rows(instances) → list[T]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete_rowrow_number_or_instance-shift_uptrue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        delete_row(row_number_or_instance, *, shift_up=True)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#other-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other Methods
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#date-and-datetime-helpers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Date and Datetime Helpers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retry-rate-limiting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retry &amp; Rate Limiting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../smartchips/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Smart chips
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#annotation-markers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Annotation Markers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Annotation Markers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#gsindexindex-int" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GSIndex(index: int)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gsrequiredmessage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GSRequired(message="")
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gsparsefunc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GSParse(func)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gsformatnumber_format_type-patternnone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GSFormat(number_format_type, pattern=None)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gsreadonly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GSReadonly()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gstreatdashasempty" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GSTreatDashAsEmpty()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gs_smartchipformat_text-smartchips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GS_SMARTCHIP(format_text="@", smartchips=[...])
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Errors
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Errors">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#requiredvalueerrorfield_name-row_number" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RequiredValueError(field_name, row_number)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parseerrorfield_name-col_index-cause" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ParseError(field_name, col_index, cause)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#unboundrowerror" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UnboundRowError
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#schemaerror" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SchemaError
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ratelimiterror-transientapierror" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RateLimitError / TransientAPIError
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#requiredvalueskippedwarning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RequiredValueSkippedWarning
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sheetrow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SheetRow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SheetRow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#properties" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Properties
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Methods
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#googleworksheett" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GoogleWorkSheet[T]
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GoogleWorkSheet[T]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#constructor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Constructor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#factory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Factory
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Factory">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#googleworksheetcreate_sheetmodel-service-spreadsheet_id-sheet_name-add_column_headerstrue-skip_if_existstrue-start_row2-start_column0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GoogleWorkSheet.create_sheet(model, service, spreadsheet_id, sheet_name, *, add_column_headers=True, skip_if_exists=True, start_row=2, start_column=0)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read Methods
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Read Methods">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rows-refreshfalse-skip_rows_missing_requiredtrue-page_sizenone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rows(*, refresh=False, skip_rows_missing_required=True, page_size=None)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#getrow_number-use_cachetrue-refreshfalse-skip_rows_missing_requiredtrue-t-none" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get(row_number, *, use_cache=True, refresh=False, skip_rows_missing_required=True) → T | None
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#write-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Write Methods
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Write Methods">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#saverowinst-saverowsrows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        saveRow(inst) / saveRows(rows)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#append_rowinstance-t" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        append_row(instance) → T
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#append_rowsinstances-listt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        append_rows(instances) → list[T]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete_rowrow_number_or_instance-shift_uptrue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        delete_row(row_number_or_instance, *, shift_up=True)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#other-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other Methods
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#date-and-datetime-helpers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Date and Datetime Helpers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retry-rate-limiting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retry &amp; Rate Limiting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="worksheet-interaction">Worksheet Interaction</h1>
+<p>API for representing Google Sheet tabs as typed Pydantic models and
+reading/writing row data.</p>
+<h2 id="annotation-markers">Annotation Markers</h2>
+<p>Markers are placed inside <code>Annotated[...]</code> on <code>SheetRow</code> field definitions.</p>
+<h3 id="gsindexindex-int"><code>GSIndex(index: int)</code></h3>
+<p>Zero-based column position relative to <code>start_column</code>. If omitted, columns
+are assigned positions in definition order.</p>
+<pre><code class="language-python">name: Annotated[str, GSIndex(0)]
+age:  Annotated[int, GSIndex(2)]   # column B is skipped
+</code></pre>
+<h3 id="gsrequiredmessage"><code>GSRequired(message="")</code></h3>
+<p>Field must be non-empty on read and write. Raises <code>RequiredValueError</code> when
+violated. Must be <strong>instantiated</strong> — <code>GSRequired()</code> not <code>GSRequired</code>.</p>
+<h3 id="gsparsefunc"><code>GSParse(func)</code></h3>
+<p>Apply <code>func(raw_string)</code> to the cell value before Pydantic validation.
+Useful for custom string-to-type conversions.</p>
+<h3 id="gsformatnumber_format_type-patternnone"><code>GSFormat(number_format_type, pattern=None)</code></h3>
+<p>Desired Google Sheets number format for the column (e.g. <code>"DATE_TIME"</code>,
+<code>"CURRENCY"</code>). Applied via <code>GoogleWorkSheet.apply_formats_for_model()</code>.</p>
+<h3 id="gsreadonly"><code>GSReadonly()</code></h3>
+<p>Field is never written back to the sheet. Drive link chips and read-only
+chip types are marked readonly automatically.</p>
+<h3 id="gstreatdashasempty"><code>GSTreatDashAsEmpty()</code></h3>
+<p>Opt-in: treat the literal string <code>"-"</code> as an empty/None value for this
+field. Without this marker, <code>"-"</code> passes through unchanged.</p>
+<h3 id="gs_smartchipformat_text-smartchips"><code>GS_SMARTCHIP(format_text="@", smartchips=[...])</code></h3>
+<p>Declares a field as containing smart chips. See <a href="../smartchips/">Smart Chips</a>.</p>
+<h2 id="errors">Errors</h2>
+<h3 id="requiredvalueerrorfield_name-row_number"><code>RequiredValueError(field_name, row_number)</code></h3>
+<p>Raised when a <code>GSRequired</code> field is empty. Carries <code>.field_name</code> and
+<code>.row_number</code> attributes.</p>
+<h3 id="parseerrorfield_name-col_index-cause"><code>ParseError(field_name, col_index, cause)</code></h3>
+<p>Raised when a <code>GSParse</code> callable throws. Carries <code>.field_name</code>,
+<code>.col_index</code>, and <code>.__cause__</code>.</p>
+<h3 id="unboundrowerror"><code>UnboundRowError</code></h3>
+<p>Raised when <code>save()</code> or <code>reload()</code> is called on a row not yet bound to a
+worksheet.</p>
+<h3 id="schemaerror"><code>SchemaError</code></h3>
+<p>Raised at model definition time for invalid annotations (duplicate
+<code>GSIndex</code>, bare <code>GSRequired</code> class without <code>()</code>, etc.).</p>
+<h3 id="ratelimiterror-transientapierror"><code>RateLimitError</code> / <code>TransientAPIError</code></h3>
+<p>Raised after all retry attempts are exhausted (429 and 5xx respectively).</p>
+<h3 id="requiredvalueskippedwarning"><code>RequiredValueSkippedWarning</code></h3>
+<p><code>UserWarning</code> emitted when a row is skipped because a required field is
+empty (instead of silently discarding it).</p>
+<h2 id="sheetrow"><code>SheetRow</code></h2>
+<p>Base class for typed rows. Subclass and annotate fields with <code>Annotated</code>.</p>
+<pre><code class="language-python">from pydantic_gsheets import SheetRow, GSIndex, GSRequired, GSFormat
+from typing import Annotated
+from datetime import datetime
+
+class MyRow(SheetRow):
+    username: Annotated[str,      GSIndex(0), GSRequired()]
+    age:      Annotated[int,      GSIndex(1)]
+    joined:   Annotated[datetime, GSIndex(2), GSFormat(&quot;DATE_TIME&quot;, &quot;dd-MM-yyyy HH:mm&quot;)]
+</code></pre>
+<h3 id="properties">Properties</h3>
+<ul>
+<li><code>row_number</code> — absolute 1-based row number in the sheet (raises <code>UnboundRowError</code> if not bound).</li>
+<li><code>worksheet</code> — the <code>GoogleWorkSheet</code> the row is bound to.</li>
+</ul>
+<h3 id="methods">Methods</h3>
+<ul>
+<li><code>save()</code> — write the current instance back to its bound row.</li>
+<li><code>reload()</code> — refresh the instance from the sheet.</li>
+</ul>
+<h2 id="googleworksheett"><code>GoogleWorkSheet[T]</code></h2>
+<p>Generic wrapper around a single worksheet tab.</p>
+<h3 id="constructor">Constructor</h3>
+<pre><code class="language-python">GoogleWorkSheet(
+    model,
+    service,          # SheetsClient or raw Resource (deprecated)
+    spreadsheet_id,
+    sheet_name,
+    *,
+    start_row=2,
+    start_column=0,
+    validate_access=True,
+)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>model</code></td>
+<td><code>Type[T]</code></td>
+<td>The <code>SheetRow</code> subclass for this sheet.</td>
+</tr>
+<tr>
+<td><code>service</code></td>
+<td><code>SheetsClient</code> or <code>Resource</code></td>
+<td>Authenticated API client.</td>
+</tr>
+<tr>
+<td><code>spreadsheet_id</code></td>
+<td><code>str</code></td>
+<td>Google Sheets spreadsheet ID.</td>
+</tr>
+<tr>
+<td><code>sheet_name</code></td>
+<td><code>str</code></td>
+<td>Name of the worksheet tab.</td>
+</tr>
+<tr>
+<td><code>start_row</code></td>
+<td><code>int</code></td>
+<td>First data row (1-based). Default <code>2</code> (assumes a header row).</td>
+</tr>
+<tr>
+<td><code>start_column</code></td>
+<td><code>int</code></td>
+<td>Column offset (0 = column A).</td>
+</tr>
+<tr>
+<td><code>validate_access</code></td>
+<td><code>bool</code></td>
+<td>Verify read/write permissions on init. Default <code>True</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="factory">Factory</h3>
+<h4 id="googleworksheetcreate_sheetmodel-service-spreadsheet_id-sheet_name-add_column_headerstrue-skip_if_existstrue-start_row2-start_column0"><code>GoogleWorkSheet.create_sheet(model, service, spreadsheet_id, sheet_name, *, add_column_headers=True, skip_if_exists=True, start_row=2, start_column=0)</code></h4>
+<p>Create a new sheet tab and return a bound <code>GoogleWorkSheet</code>. If the tab
+already exists and <code>skip_if_exists=True</code>, opens the existing tab instead.</p>
+<h3 id="read-methods">Read Methods</h3>
+<h4 id="rows-refreshfalse-skip_rows_missing_requiredtrue-page_sizenone"><code>rows(*, refresh=False, skip_rows_missing_required=True, page_size=None)</code></h4>
+<p>Generator yielding all data rows as typed instances. Results are cached;
+pass <code>refresh=True</code> to re-read from the sheet. Use <code>page_size</code> to read
+large sheets in chunks (reduces memory usage).</p>
+<h4 id="getrow_number-use_cachetrue-refreshfalse-skip_rows_missing_requiredtrue-t-none"><code>get(row_number, *, use_cache=True, refresh=False, skip_rows_missing_required=True) → T | None</code></h4>
+<p>Fetch a single row by absolute 1-based row number. Returns <code>None</code> if a
+required field is empty and <code>skip_rows_missing_required=True</code>.</p>
+<h3 id="write-methods">Write Methods</h3>
+<h4 id="saverowinst-saverowsrows"><code>saveRow(inst)</code> / <code>saveRows(rows)</code></h4>
+<p>Save one or multiple already-bound row instances.</p>
+<h4 id="append_rowinstance-t"><code>append_row(instance) → T</code></h4>
+<p>Append an <strong>unbound</strong> <code>SheetRow</code> instance as a new row at the end of data.
+Binds the instance to its new row number and returns it.</p>
+<pre><code class="language-python">new_row = MyRow(username=&quot;alice&quot;, age=30, joined=datetime.now())
+ws.append_row(new_row)
+print(new_row.row_number)  # e.g. 5
+</code></pre>
+<h4 id="append_rowsinstances-listt"><code>append_rows(instances) → list[T]</code></h4>
+<p>Append multiple unbound rows in a single <code>batchUpdate</code> call.</p>
+<h4 id="delete_rowrow_number_or_instance-shift_uptrue"><code>delete_row(row_number_or_instance, *, shift_up=True)</code></h4>
+<p>Delete a row by number or bound instance. When <code>shift_up=True</code> (default)
+subsequent rows shift up (Google Sheets native behaviour); the cache is
+updated accordingly.</p>
+<h3 id="other-methods">Other Methods</h3>
+<ul>
+<li><code>clear_cache()</code> — discard the in-memory row cache.</li>
+<li><code>apply_formats_for_model()</code> — apply <code>GSFormat</code> annotations as column-level number formats.</li>
+<li><code>get_last_row_number()</code> — best-effort detection of the last populated row.</li>
+</ul>
+<h2 id="date-and-datetime-helpers">Date and Datetime Helpers</h2>
+<pre><code class="language-python">from pydantic_gsheets import gsheets_to_datetime, gsheets_to_date, datetime_to_gsheets
+</code></pre>
+<ul>
+<li><code>gsheets_to_datetime(serial)</code> → <code>datetime</code> (UTC-aware, preserves time)</li>
+<li><code>gsheets_to_date(serial)</code> → <code>date</code> (time component dropped)</li>
+<li><code>datetime_to_gsheets(d)</code> → <code>float</code> serial number</li>
+</ul>
+<p>Fields typed as <code>datetime</code> use <code>gsheets_to_datetime</code>; fields typed as
+<code>date</code> use <code>gsheets_to_date</code>. The type annotation is the source of truth.</p>
+<h2 id="retry-rate-limiting">Retry &amp; Rate Limiting</h2>
+<p>All API calls go through <code>SheetsClient</code> which applies:</p>
+<ul>
+<li><strong>Token-bucket rate limiter</strong> — 290 req/min (Google's quota is 300/min).</li>
+<li><strong>Exponential backoff</strong> — retries on 429 / 5xx with jitter.</li>
+</ul>
+<p>Tune via <code>RetryConfig</code>:</p>
+<pre><code class="language-python">from pydantic_gsheets import SheetsClient, RetryConfig
+
+client = SheetsClient(service, retry_config=RetryConfig(max_attempts=3))
+</code></pre>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
