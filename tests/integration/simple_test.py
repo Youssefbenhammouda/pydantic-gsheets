@@ -18,17 +18,17 @@ creds, _ = default(scopes=["https://www.googleapis.com/auth/spreadsheets"])
 
 
 class SampleData1(SheetRow):
-    username: Annotated[str, GSRequired,GSIndex(0)]
-    id: Annotated[int, GSRequired,GSIndex(1)]
-    email: Annotated[str, GSRequired,GSIndex(2)]
+    username: Annotated[str, GSRequired(),GSIndex(0)]
+    id: Annotated[int, GSRequired(),GSIndex(1)]
+    email: Annotated[str, GSRequired(),GSIndex(2)]
     age: Annotated[int, GSIndex(3)]
     location: Annotated[str, GSIndex(4)]
-    created_at: Annotated[datetime, GSRequired,GSIndex(5),GSFormat('DATE_TIME', 'dd-MM-yyyy HH:mm')]
+    created_at: Annotated[datetime, GSRequired(),GSIndex(5),GSFormat('DATE_TIME', 'dd-MM-yyyy HH:mm')]
 
 class SampleData2(SheetRow):
-    title: Annotated[str, GSRequired,GSIndex(0)]
-    author: Annotated[str, GSRequired,GSIndex(1)]
-    published_date: Annotated[datetime, GSRequired,GSIndex(2),GSFormat('DATE_TIME', 'dd-MM-yyyy HH:mm')]
+    title: Annotated[str, GSRequired(),GSIndex(0)]
+    author: Annotated[str, GSRequired(),GSIndex(1)]
+    published_date: Annotated[datetime, GSRequired(),GSIndex(2),GSFormat('DATE_TIME', 'dd-MM-yyyy HH:mm')]
 
 
 @pytest.fixture
