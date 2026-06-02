@@ -1,93 +1,191 @@
 # Worksheet Interaction
 
-API for representing Google Sheet tabs as typed models and reading/writing
-row data.
+API for representing Google Sheet tabs as typed Pydantic models and
+reading/writing row data.
 
-## Errors and Annotation Markers
+## Annotation Markers
 
-### `RequiredValueError`
-Raised when a field marked as required is empty when reading or writing.
+Markers are placed inside `Annotated[...]` on `SheetRow` field definitions.
 
-### `GSIndex`
-`GSIndex(index: int)` [Optional] marks the zero-based column position of a field relative to the worksheet's `start_column`. 
-
-If not specified, columns will follow the same order as defined in the class. You can set the index for specific columns to skip a range; subsequent columns will align next to the last column with an explicitly set index.
-
-### `GSRequired`
-Marks a field as mandatory. Missing values raise `RequiredValueError` on
-read and abort writes.
-
-### `GSParse`
-`GSParse(func)` applies `func(value)` to a cell before model construction.
-Useful for custom parsing such as converting strings to numbers or booleans.
-
-### `GSFormat`
-Defines the desired number format for a column. Example:
-`GSFormat('DATE_TIME', 'dd-MM-yyyy HH:mm')`.
-Apply formats using `GoogleWorkSheet.apply_formats_for_model()`.
-
-### `GSReadonly`
-Indicates that the field should not be written back to the sheet.
-
-If the column is [smartChips](/smartchips.md) and have a link chip other than google drive, it will be considered automatically as read-only, see [Writing Smart Chips](/smartchips/#writing-smart-chips).
-
-## Smart Chips Support
-Smart chips are now supported. You can read and write Google Sheets smart chips (e.g., Drive file, people, date/time, and link chips) through the helper abstractions documented in [Smart Chips Integration in pydantic-gsheets](/smartchips.md). These integrate transparently with SheetRow models: when reading, chip metadata is parsed into structured Python values, and when writing, appropriate rich chip payloads are emitted to the API.
-
-### `GS_SMARTCHIP`
-`GS_SMARTCHIP( format_text: str = "@", smartchips: list[type[smartChip]] = [])`
-
-integrates smart chips into your model. Use it to specify the format and type and order of smart chips for a field.
-for example:
+### `GSIndex(index: int)`
+Zero-based column position relative to `start_column`. If omitted, columns
+are assigned positions in definition order.
 
 ```python
-field1: Annotated[smartChips,GS_SMARTCHIP("@ owner of @ and @ owner of @",smartchips=[peopleSmartChip,fileSmartChip,peopleSmartChip,fileSmartChip]),GSIndex(0), GSRequired()] 
+name: Annotated[str, GSIndex(0)]
+age:  Annotated[int, GSIndex(2)]   # column B is skipped
 ```
 
+### `GSRequired(message="")`
+Field must be non-empty on read and write. Raises `RequiredValueError` when
+violated. Must be **instantiated** — `GSRequired()` not `GSRequired`.
+
+### `GSParse(func)`
+Apply `func(raw_string)` to the cell value before Pydantic validation.
+Useful for custom string-to-type conversions.
+
+### `GSFormat(number_format_type, pattern=None)`
+Desired Google Sheets number format for the column (e.g. `"DATE_TIME"`,
+`"CURRENCY"`). Applied via `GoogleWorkSheet.apply_formats_for_model()`.
+
+### `GSReadonly()`
+Field is never written back to the sheet. Drive link chips and read-only
+chip types are marked readonly automatically.
+
+### `GSTreatDashAsEmpty()`
+Opt-in: treat the literal string `"-"` as an empty/None value for this
+field. Without this marker, `"-"` passes through unchanged.
+
+### `GS_SMARTCHIP(format_text="@", smartchips=[...])`
+Declares a field as containing smart chips. See [Smart Chips](smartchips.md).
+
+## Errors
+
+### `RequiredValueError(field_name, row_number)`
+Raised when a `GSRequired` field is empty. Carries `.field_name` and
+`.row_number` attributes.
+
+### `ParseError(field_name, col_index, cause)`
+Raised when a `GSParse` callable throws. Carries `.field_name`,
+`.col_index`, and `.__cause__`.
+
+### `UnboundRowError`
+Raised when `save()` or `reload()` is called on a row not yet bound to a
+worksheet.
+
+### `SchemaError`
+Raised at model definition time for invalid annotations (duplicate
+`GSIndex`, bare `GSRequired` class without `()`, etc.).
+
+### `RateLimitError` / `TransientAPIError`
+Raised after all retry attempts are exhausted (429 and 5xx respectively).
+
+### `RequiredValueSkippedWarning`
+`UserWarning` emitted when a row is skipped because a required field is
+empty (instead of silently discarding it).
+
 ## `SheetRow`
-Base class for typed rows. Subclass it and annotate fields with
-`typing.Annotated` using the markers above. Instances are bound to a
-`GoogleWorkSheet` and row number when read or appended.
 
+Base class for typed rows. Subclass and annotate fields with `Annotated`.
 
+```python
+from pydantic_gsheets import SheetRow, GSIndex, GSRequired, GSFormat
+from typing import Annotated
+from datetime import datetime
+
+class MyRow(SheetRow):
+    username: Annotated[str,      GSIndex(0), GSRequired()]
+    age:      Annotated[int,      GSIndex(1)]
+    joined:   Annotated[datetime, GSIndex(2), GSFormat("DATE_TIME", "dd-MM-yyyy HH:mm")]
+```
 
 ### Properties
-- `row_number` – absolute row number within the sheet (1-based).
-- `worksheet` – the `GoogleWorkSheet` instance the row is bound to.
+- `row_number` — absolute 1-based row number in the sheet (raises `UnboundRowError` if not bound).
+- `worksheet` — the `GoogleWorkSheet` the row is bound to.
 
 ### Methods
-- `save()` – persist changes for the bound row.
-- `reload()` – refresh the instance from the sheet.
+- `save()` — write the current instance back to its bound row.
+- `reload()` — refresh the instance from the sheet.
 
-## `GoogleWorkSheet`
-Wrapper around a single worksheet (tab) that streams rows as `SheetRow`
-instances and writes changes back.
+## `GoogleWorkSheet[T]`
+
+Generic wrapper around a single worksheet tab.
 
 ### Constructor
-`GoogleWorkSheet(model, service, spreadsheet_id, sheet_name, *, start_row=2, has_headers=True, start_column=0, require_write=False, drive_service=None)`
+
+```python
+GoogleWorkSheet(
+    model,
+    service,          # SheetsClient or raw Resource (deprecated)
+    spreadsheet_id,
+    sheet_name,
+    *,
+    start_row=2,
+    start_column=0,
+    validate_access=True,
+)
+```
 
 | Parameter | Type | Description |
-| --- | --- | --- |
-| `model` | `Type[SheetRow]` | The Pydantic row model associated with this sheet. |
-| `service` | Sheets `Resource` | Authenticated Sheets API client. |
-| `spreadsheet_id` | `str` | ID of the spreadsheet. |
+|---|---|---|
+| `model` | `Type[T]` | The `SheetRow` subclass for this sheet. |
+| `service` | `SheetsClient` or `Resource` | Authenticated API client. |
+| `spreadsheet_id` | `str` | Google Sheets spreadsheet ID. |
 | `sheet_name` | `str` | Name of the worksheet tab. |
-| `start_row` | `int` | First row containing data (1-based). |
-| `has_headers` | `bool` | Whether the sheet has a header row. |
+| `start_row` | `int` | First data row (1-based). Default `2` (assumes a header row). |
 | `start_column` | `int` | Column offset (0 = column A). |
-| `require_write` | `bool` | If `True`, verify write permissions on initialization. |
-| `drive_service` | Drive `Resource` or `None` | Enables Drive file predownload. |
+| `validate_access` | `bool` | Verify read/write permissions on init. Default `True`. |
 
-### Methods
+### Factory
 
-- `rows(*, refresh=False, skip_rows_missing_required=True)` → generator of
-  row instances. Set `refresh=True` to re-read the sheet.
-- `get(row_number, *, use_cache=True, refresh=False, skip_rows_missing_required=True)` → return a specific row or
-  `None` when required values are missing.
-- `saveRow(inst)` → save a row instance or by row number.
-- `saveRows(rows)` → intended bulk save helper (currently a placeholder).
-- `clear_cache()` → clear in-memory row cache.
-- `apply_formats_for_model()` → apply `GSFormat` markers to all columns.
-- `write_rows(instances)` → bulk write multiple `SheetRow` objects. Unbound
-  rows are appended to the end of the sheet.
-- `get_last_row_number()` → best-effort detection of the final populated row.
+#### `GoogleWorkSheet.create_sheet(model, service, spreadsheet_id, sheet_name, *, add_column_headers=True, skip_if_exists=True, start_row=2, start_column=0)`
+Create a new sheet tab and return a bound `GoogleWorkSheet`. If the tab
+already exists and `skip_if_exists=True`, opens the existing tab instead.
+
+### Read Methods
+
+#### `rows(*, refresh=False, skip_rows_missing_required=True, page_size=None)`
+Generator yielding all data rows as typed instances. Results are cached;
+pass `refresh=True` to re-read from the sheet. Use `page_size` to read
+large sheets in chunks (reduces memory usage).
+
+#### `get(row_number, *, use_cache=True, refresh=False, skip_rows_missing_required=True) → T | None`
+Fetch a single row by absolute 1-based row number. Returns `None` if a
+required field is empty and `skip_rows_missing_required=True`.
+
+### Write Methods
+
+#### `saveRow(inst)` / `saveRows(rows)`
+Save one or multiple already-bound row instances.
+
+#### `append_row(instance) → T`
+Append an **unbound** `SheetRow` instance as a new row at the end of data.
+Binds the instance to its new row number and returns it.
+
+```python
+new_row = MyRow(username="alice", age=30, joined=datetime.now())
+ws.append_row(new_row)
+print(new_row.row_number)  # e.g. 5
+```
+
+#### `append_rows(instances) → list[T]`
+Append multiple unbound rows in a single `batchUpdate` call.
+
+#### `delete_row(row_number_or_instance, *, shift_up=True)`
+Delete a row by number or bound instance. When `shift_up=True` (default)
+subsequent rows shift up (Google Sheets native behaviour); the cache is
+updated accordingly.
+
+### Other Methods
+
+- `clear_cache()` — discard the in-memory row cache.
+- `apply_formats_for_model()` — apply `GSFormat` annotations as column-level number formats.
+- `get_last_row_number()` — best-effort detection of the last populated row.
+
+## Date and Datetime Helpers
+
+```python
+from pydantic_gsheets import gsheets_to_datetime, gsheets_to_date, datetime_to_gsheets
+```
+
+- `gsheets_to_datetime(serial)` → `datetime` (UTC-aware, preserves time)
+- `gsheets_to_date(serial)` → `date` (time component dropped)
+- `datetime_to_gsheets(d)` → `float` serial number
+
+Fields typed as `datetime` use `gsheets_to_datetime`; fields typed as
+`date` use `gsheets_to_date`. The type annotation is the source of truth.
+
+## Retry & Rate Limiting
+
+All API calls go through `SheetsClient` which applies:
+
+- **Token-bucket rate limiter** — 290 req/min (Google's quota is 300/min).
+- **Exponential backoff** — retries on 429 / 5xx with jitter.
+
+Tune via `RetryConfig`:
+
+```python
+from pydantic_gsheets import SheetsClient, RetryConfig
+
+client = SheetsClient(service, retry_config=RetryConfig(max_attempts=3))
+```

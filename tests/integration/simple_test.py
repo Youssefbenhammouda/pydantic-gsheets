@@ -18,17 +18,17 @@ creds, _ = default(scopes=["https://www.googleapis.com/auth/spreadsheets"])
 
 
 class SampleData1(SheetRow):
-    username: Annotated[str, GSRequired,GSIndex(0)]
-    id: Annotated[int, GSRequired,GSIndex(1)]
-    email: Annotated[str, GSRequired,GSIndex(2)]
+    username: Annotated[str, GSRequired(),GSIndex(0)]
+    id: Annotated[int, GSRequired(),GSIndex(1)]
+    email: Annotated[str, GSRequired(),GSIndex(2)]
     age: Annotated[int, GSIndex(3)]
     location: Annotated[str, GSIndex(4)]
-    created_at: Annotated[datetime, GSRequired,GSIndex(5),GSFormat('DATE_TIME', 'dd-MM-yyyy HH:mm')]
+    created_at: Annotated[datetime, GSRequired(),GSIndex(5),GSFormat('DATE_TIME', 'dd-MM-yyyy HH:mm')]
 
 class SampleData2(SheetRow):
-    title: Annotated[str, GSRequired,GSIndex(0)]
-    author: Annotated[str, GSRequired,GSIndex(1)]
-    published_date: Annotated[datetime, GSRequired,GSIndex(2),GSFormat('DATE_TIME', 'dd-MM-yyyy HH:mm')]
+    title: Annotated[str, GSRequired(),GSIndex(0)]
+    author: Annotated[str, GSRequired(),GSIndex(1)]
+    published_date: Annotated[datetime, GSRequired(),GSIndex(2),GSFormat('DATE_TIME', 'dd-MM-yyyy HH:mm')]
 
 
 @pytest.fixture
@@ -103,7 +103,7 @@ def test_can_create_worksheet(test_worksheet1):
                 email=fake.email(),
                 age=fake.random_int(min=18, max=60),
                 location=fake.city(),
-                created_at=fake.date_time_this_decade()
+                created_at=fake.date_time_this_decade().replace(microsecond=0)
             )
         )
     test_worksheet1.saveRows(data)
@@ -127,7 +127,7 @@ def test_read_and_write_same_data(test_worksheet2):
             SampleData2(
                 title=fake.sentence(),
                 author=fake.name(),
-                published_date=fake.date_time_this_decade()
+                published_date=fake.date_time_this_decade().replace(microsecond=0)
             )
         )
     olddata = data.copy()  # Copy the data to avoid mutation issues

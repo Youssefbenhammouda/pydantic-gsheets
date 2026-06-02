@@ -35,6 +35,17 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+pydantic_gsheets = ["py.typed"]
+
+[tool.mypy]
+strict = true
+plugins = ["pydantic.mypy"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+
 [tool.setuptools_scm]
 version_scheme = "guess-next-dev"   # e.g. 1.2.0.dev3 while between tags
 local_scheme = "node-and-date"

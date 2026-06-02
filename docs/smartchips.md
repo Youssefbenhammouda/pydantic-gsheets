@@ -1,144 +1,111 @@
-# Smart Chips Integration in pydantic-gsheets
+# Smart Chips
 
-Smart chips are a powerful feature in `pydantic-gsheets` that allow you to represent rich, interactive data within Google Sheets. These chips can include links to Google services, such as Drive files, YouTube videos, Calendar events, and more. Below is an extensive guide to understanding and using smart chips in your projects.
+Smart chips are rich, interactive cells in Google Sheets that can link to Drive
+files, people, calendar events, YouTube videos, and places. `pydantic-gsheets`
+parses chips on read and emits them on write where supported.
 
-## Overview
+## Supported Types
 
-Smart chips are implemented using the `smartChip` base class and its various subclasses, such as `richLinkProperties`, `personProperties`, and others. These classes define the structure and behavior of different types of chips, enabling seamless integration with Google Sheets.
+| Class | Readable | Writable | Description |
+|---|---|---|---|
+| `fileSmartChip` / `FileSmartChip` | ✅ | ✅ | Google Drive file link |
+| `peopleSmartChip` / `PeopleSmartChip` | ✅ | ✅ | Person / email chip |
+| `eventSmartChip` / `EventSmartChip` | ✅ | ❌ | Calendar event (read-only) |
+| `placeSmartChip` / `PlaceSmartChip` | ✅ | ❌ | Location (read-only) |
+| `youtubeSmartChip` / `YouTubeSmartChip` | ✅ | ❌ | YouTube video (read-only) |
+| `richLinkProperties` / `RichLinkProperties` | ✅ | ✅ | Generic rich link |
 
-## Supported Smart Chips
-
-The following types of smart chips are supported:
-
-- **Rich Link Chips**: Represent links to external resources, such as Google Drive files.
-- **Person Chips**: Represent individuals with associated email addresses and display formats.
-- **Event Chips**: Represent calendar events (read-only).
-- **Place Chips**: Represent locations (read-only).
-- **YouTube Chips**: Represent YouTube videos (read-only).
+Attempting to write a read-only chip type raises `NotImplementedError`.
 
 ## Writing Smart Chips
 
-While the API can read links to various Google services (like YouTube or Calendar), only links to Google Drive files can be written as chips.
+Write access to Drive file chips requires the `drive.file`, `drive.readonly`,
+or `drive` OAuth scope. These are included in `DEFAULT_SCOPES`.
 
-### Authorization Requirements
+## Declaring Smart Chip Fields
 
-Writing Drive file chips requires your application to be authorized with at least one of the following OAuth scopes:
-
-- `drive.file`
-- `drive.readonly`
-- `drive`
-
-Ensure that your application is properly authorized to avoid any issues when writing Drive file chips.
-
-## Example Usage
-
-Here is an example of how to define and use smart chips in a Google Sheet:
+Use `GS_SMARTCHIP` (or its alias `GSSmartChip`) as an annotation marker on a
+field typed as `SmartChips`:
 
 ```python
-from pydantic_gsheets.types import peopleSmartChip, fileSmartChip, smartChips, GS_SMARTCHIP
-from pydantic_gsheets import GoogleWorkSheet, SheetRow
+from pydantic_gsheets import SheetRow, GSIndex, GSRequired, GS_SMARTCHIP
+from pydantic_gsheets.types.smart_chips import SmartChips, peopleSmartChip, fileSmartChip
 from typing import Annotated
 
-class CustomRow(SheetRow):
-    field1: Annotated[
-        smartChips,
-        GS_SMARTCHIP(
-            "@ owner of @",
-            smartchips=[peopleSmartChip, fileSmartChip]
-        )
+class MyRow(SheetRow):
+    owner_and_file: Annotated[
+        SmartChips,
+        GS_SMARTCHIP("@ owns @", smartchips=[peopleSmartChip, fileSmartChip]),
+        GSIndex(0),
+        GSRequired(),
     ]
-
-# Initialize the worksheet
-sheet = GoogleWorkSheet(
-    model=CustomRow,
-    service=svc,  # Your authenticated Sheets service
-    spreadsheet_id="your_spreadsheet_id",
-    sheet_name="Sheet1"
-)
-
-# Fetch and manipulate rows
-data = list(sheet.rows(skip_rows_missing_required=True))
-data[0].name = smartChips(display_text="John Doe", format_text="@")
-data[0].save()
 ```
 
-## Limitations
+The `format_text` string uses `@` as a placeholder for each chip in order.
+Use `\@` for a literal `@` character.
 
-- Only Google Drive file chips can be written. Other types of chips, such as YouTube or Calendar event chips, are read-only.
-- Ensure proper authorization to avoid runtime errors.
+## Reading Smart Chips
 
+When a row is read, the field will be a `SmartChips` instance:
 
-## Smart Chip Object Definitions
+```python
+for row in ws.rows():
+    chips = row.owner_and_file
+    print(chips.display_text)       # raw cell text
+    print(chips.chipRuns[0].email)  # peopleSmartChip
+    print(chips.chipRuns[1].uri)    # fileSmartChip
+```
 
-### `smartChip`
-Base class for all smart chip types. It is an abstract class that defines the common structure for smart chips.
+## Writing Smart Chips
 
-### `richLinkProperties`
-Represents a rich link chip with a URI.
+Assign a `SmartChips` instance and call `save()`:
 
-#### Properties
-- `uri` – The URI of the rich link.
+```python
+from pydantic_gsheets.types.smart_chips import SmartChips, peopleSmartChip, fileSmartChip
 
-#### Methods
-- `_to_dict()` – Converts the chip to a dictionary representation.
+row.owner_and_file = SmartChips(
+    format_text="@ owns @",
+    chipRuns=[
+        peopleSmartChip(email="alice@example.com"),
+        fileSmartChip(uri="https://drive.google.com/file/d/FILE_ID"),
+    ],
+)
+row.save()
+```
+
+## Class Reference
+
+### `smartChip` (base)
+Abstract base for all chip types. Defines `__fieldName__` class variable and
+`_to_dict()` method.
+
+### `richLinkProperties` / `RichLinkProperties`
+- `uri: str` — the link URI.
 
 ### `personProperties`
-Represents a person chip with an email and display format.
+- `email: str`
+- `display_format: displayFormat` — `DEFAULT`, `LAST_NAME_COMMA_FIRST_NAME`, or `EMAIL`.
 
-#### Properties
-- `email` – The email address of the person.
-- `display_format` – The display format for the person. Options include:
-  - `DEFAULT`
-  - `LAST_NAME_COMMA_FIRST_NAME`
-  - `EMAIL`
+### `peopleSmartChip` / `PeopleSmartChip`
+Subclass of `personProperties`.
 
-#### Methods
-- `_to_dict()` – Converts the chip to a dictionary representation.
+### `fileSmartChip` / `FileSmartChip`
+Subclass of `richLinkProperties`. The only writable rich-link chip type.
 
-### `peopleSmartChip`
-A subclass of `personProperties` for representing people chips.
+### `eventSmartChip`, `placeSmartChip`, `youtubeSmartChip`
+Read-only subclasses of `richLinkProperties`. `_to_dict()` raises `NotImplementedError`.
 
-### `fileSmartChip`
-A subclass of `richLinkProperties` for representing file chips.
+### `SmartChips` (also `smartChips`)
+Container returned when reading a smart chip field.
+- `display_text: str | None` — raw cell text.
+- `format_text: str | None` — the `@`-pattern format string.
+- `chipRuns: list[smartChip]` — parsed chip objects in order.
 
-### `eventSmartChip`
-A subclass of `richLinkProperties` for representing event chips. Writing is not supported.
+### `GS_SMARTCHIP` / `GSSmartChip`
+Annotation marker dataclass.
+- `format_text: str` — `@`-pattern string. Default `"@"`.
+- `smartchips: list[type[smartChip]]` — chip types in the same order as `@` tokens.
 
-#### Methods
-- `_to_dict()` – Raises `noWriteSupport` as writing is not supported.
-
-### `placeSmartChip`
-A subclass of `richLinkProperties` for representing place chips. Writing is not supported.
-
-#### Methods
-- `_to_dict()` – Raises `noWriteSupport` as writing is not supported.
-
-### `youtubeSmartChip`
-A subclass of `richLinkProperties` for representing YouTube chips. Writing is not supported.
-
-#### Methods
-- `_to_dict()` – Raises `noWriteSupport` as writing is not supported.
-
-### `smartChips`
-Represents a collection of smart chips with display text and format.
-
-#### Properties
-- `display_text` – The display text for the rich link.
-- `format_text` – The format text for the smart chip.
-- `chipRuns` – A list of `smartChip` objects.
-
-### `GS_SMARTCHIP`
-Defines the format text and associated smart chips for a display text.
-
-#### Properties
-- `format_text` – The format text for the smart chip.
-- `smartchips` – A list of smart chip types associated with the display text.
-
-### `smartchipConf`
-Configuration class for smart chips.
-
-#### Properties
-- `is_smartchips` – Boolean indicating if smart chips are enabled.
-- `smartchips` – A list of smart chip types.
-- `format_text` – The format text for the smart chip.
-
+### `SmartChipConfig` (also `smartchipConf`)
+Internal Pydantic model storing parsed chip config per field. Not part of
+the public annotation API.

@@ -1,48 +1,56 @@
+"""Backward-compatible auth shims. Deprecated — use credentials_from_*() instead."""
 from __future__ import annotations
+
+import warnings
+from collections.abc import Sequence
 from enum import Enum
-from typing import Optional, Sequence
+from typing import Optional
 
-from pydantic import BaseModel, Field
-from googleapiclient.discovery import build
-from googleapiclient.discovery import Resource
+from pydantic import BaseModel
 
-from .user_oauth import UserOAuthConfig, UserOAuthStrategy, DEFAULT_SCOPES
+from ._scopes import SHEETS_RW, DRIVE_FULL
+from .credentials import (
+    credentials_from_user_oauth,
+    build_sheets_service as _build_sheets,
+    build_drive_service as _build_drive,
+)
 
-class AuthMethod(str, Enum):
+_MSG = (
+    "AuthConfig and AuthMethod are deprecated and will be removed in v3. "
+    "Use credentials_from_user_oauth() / credentials_from_service_account_file() / "
+    "credentials_from_adc() + build_sheets_service() instead."
+)
+
+
+class AuthMethod(Enum):
     USER_OAUTH = "user_oauth"
-    # Future: AUTO = "auto", SERVICE_ACCOUNT = "service_account", etc.
+
 
 class AuthConfig(BaseModel):
     method: AuthMethod = AuthMethod.USER_OAUTH
-    scopes: Sequence[str] = Field(default_factory=lambda: list(DEFAULT_SCOPES))
-
-    # User OAuth fields
+    scopes: Sequence[str] = (SHEETS_RW, DRIVE_FULL)
     client_secrets_file: Optional[str] = None
     token_cache_file: str = "token.json"
     local_server_port: int = 0
 
+
 def get_credentials(cfg: AuthConfig):
+    warnings.warn(_MSG, DeprecationWarning, stacklevel=2)
     if cfg.method == AuthMethod.USER_OAUTH:
-        assert cfg.client_secrets_file, "client_secrets_file is required for USER_OAUTH"
-        strategy = UserOAuthStrategy(
-            UserOAuthConfig(
-                client_secrets_file=cfg.client_secrets_file,
-                token_cache_file=cfg.token_cache_file,
-                scopes=cfg.scopes,
-                
-                local_server_port=cfg.local_server_port,
-            )
+        return credentials_from_user_oauth(
+            cfg.client_secrets_file or "client_secrets.json",
+            token_cache_file=cfg.token_cache_file,
+            scopes=list(cfg.scopes),
+            local_server_port=cfg.local_server_port,
         )
-        return strategy.get_credentials()
+    raise ValueError(f"Unsupported auth method: {cfg.method}")
 
-    raise NotImplementedError(f"Auth method {cfg.method} not implemented yet.")
 
-def get_sheets_service(cfg: AuthConfig) -> Resource:
-    """Return a googleapiclient Sheets service authorized via the chosen method."""
-    creds = get_credentials(cfg)
-    return build("sheets", "v4", credentials=creds)
+def get_sheets_service(cfg: AuthConfig):
+    warnings.warn(_MSG, DeprecationWarning, stacklevel=2)
+    return _build_sheets(get_credentials(cfg))
 
-def get_drive_service(cfg: AuthConfig) -> Resource:
-    """Return a googleapiclient Drive service authorized via the chosen method."""
-    creds = get_credentials(cfg)
-    return build("drive", "v3", credentials=creds)
+
+def get_drive_service(cfg: AuthConfig):
+    warnings.warn(_MSG, DeprecationWarning, stacklevel=2)
+    return _build_drive(get_credentials(cfg))
