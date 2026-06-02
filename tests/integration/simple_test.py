@@ -103,7 +103,7 @@ def test_can_create_worksheet(test_worksheet1):
                 email=fake.email(),
                 age=fake.random_int(min=18, max=60),
                 location=fake.city(),
-                created_at=fake.date_time_this_decade()
+                created_at=fake.date_time_this_decade().replace(microsecond=0)
             )
         )
     test_worksheet1.saveRows(data)
@@ -127,7 +127,7 @@ def test_read_and_write_same_data(test_worksheet2):
             SampleData2(
                 title=fake.sentence(),
                 author=fake.name(),
-                published_date=fake.date_time_this_decade()
+                published_date=fake.date_time_this_decade().replace(microsecond=0)
             )
         )
     olddata = data.copy()  # Copy the data to avoid mutation issues

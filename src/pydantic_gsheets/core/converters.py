@@ -24,17 +24,15 @@ def gsheets_to_date(sheet_number: float) -> date:
 
 
 def datetime_to_gsheets(d: date | datetime) -> float:
-    """Convert a Python date or datetime to a Google Sheets serial number."""
+    """Convert a Python date or datetime to a Google Sheets serial number.
+
+    Microseconds are stripped — Sheets has ~1-second precision.
+    """
     if isinstance(d, datetime):
-        if d.tzinfo is not None:
-            # Aware datetime: subtract aware epoch
-            delta = d - _GSHEETS_EPOCH_AWARE
-        else:
-            # Naive datetime: subtract naive epoch
-            delta = d - _GSHEETS_EPOCH_NAIVE
+        d = d.replace(microsecond=0)
+        delta = d - (_GSHEETS_EPOCH_AWARE if d.tzinfo is not None else _GSHEETS_EPOCH_NAIVE)
     else:
-        naive_dt = datetime(d.year, d.month, d.day)
-        delta = naive_dt - _GSHEETS_EPOCH_NAIVE
+        delta = datetime(d.year, d.month, d.day) - _GSHEETS_EPOCH_NAIVE
     return delta.days + delta.seconds / 86400.0
 
 
