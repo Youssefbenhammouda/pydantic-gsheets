@@ -57,3 +57,20 @@ def test_col_index_to_a1(idx, expected):
 def test_col_index_negative_raises():
     with pytest.raises(ValueError):
         col_index_to_a1(-1)
+
+
+def test_gsheets_to_datetime_is_naive():
+    """Round-trip with naive datetimes must preserve equality (no tzinfo added)."""
+    dt = gsheets_to_datetime(45000.5)
+    assert dt.tzinfo is None
+
+
+def test_roundtrip_naive():
+    naive = datetime(2024, 3, 15, 10, 30, 0)
+    assert abs(datetime_to_gsheets(naive) - datetime_to_gsheets(gsheets_to_datetime(datetime_to_gsheets(naive)))) < 1e-9
+
+
+def test_roundtrip_aware():
+    aware = datetime(2024, 3, 15, 10, 30, 0, tzinfo=timezone.utc)
+    serial = datetime_to_gsheets(aware)
+    assert abs(serial - datetime_to_gsheets(datetime(2024, 3, 15, 10, 30, 0))) < 1e-9
