@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools>=80", "setuptools_scm>=8"]
+requires = ["setuptools>=80"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pydantic-gsheets"
 description = "A Pydantic integration for Google Sheets"
-dynamic = ["version"]
+version = "1.0.0"
 authors = [{name = "Youssef Ben hammouda", email = "youssef@benhammouda.ma"}]
 requires-python = ">=3.12"
 readme = "README.md"
@@ -45,12 +45,6 @@ plugins = ["pydantic.mypy"]
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
-
-[tool.setuptools_scm]
-version_scheme = "guess-next-dev"   # e.g. 1.2.0.dev3 while between tags
-local_scheme = "node-and-date"
-tag_regex = '^v?(?P<version>\d+\.\d+\.\d+)$'
-
 
 [project.urls]
 Homepage = "https://github.com/Youssefbenhammouda/pydantic-gsheets"
