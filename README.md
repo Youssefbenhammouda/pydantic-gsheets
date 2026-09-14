@@ -1,4 +1,3 @@
-markdown
 # pydantic-gsheets  
 
 [![PyPI](https://img.shields.io/pypi/v/pydantic-gsheets)](https://pypi.org/project/pydantic-gsheets/)
