@@ -207,3 +207,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# AI assistant tooling
+.claude/
